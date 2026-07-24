@@ -36,6 +36,7 @@ class CosmoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=entry,
         )
         self.client = client
+        self.entry_id = entry.entry_id
         self.device_id = device_id
         # Reverse-geocode cache: only call Nominatim when the rounded fix moves.
         self._geo_key: tuple[float, float] | None = None

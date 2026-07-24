@@ -42,6 +42,28 @@ its battery on a live fix.
 4. Enter your COSMO parent-account **email and password**.
 5. Pick the watch. Done.
 
+## Multiple watches
+
+One account can track more than one kid's watch. Add the integration again
+(**Add Integration → Cosmo Kids Watch**) and sign in the same way — the watch
+picker only offers watches that aren't already configured, so you'll land
+straight on the new one (or a dropdown if more than one is still unclaimed).
+
+## Replacing a broken watch
+
+If a watch is lost or breaks and you set up a new one in the COSMO app, it
+shows up on the account as a new watch (new device ID) — the old integration
+entry won't pick it up on its own. Instead of deleting and re-adding (which
+loses history), use **reconfigure**:
+
+1. **Settings → Devices & Services → Cosmo Kids Watch** → the entry for that
+   kid → ⋮ → **Reconfigure**.
+2. Sign in again (refreshes the list of watches on the account).
+3. Pick the new watch.
+
+The entity IDs, friendly names, and location history stay put — only the
+underlying watch changes.
+
 ## How auth works
 
 Email + password → `POST /v2/token` → short-lived access token + refresh token.

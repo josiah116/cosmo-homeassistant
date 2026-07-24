@@ -48,7 +48,7 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
 
     def __init__(self, coordinator, name, model) -> None:
         super().__init__(coordinator, name, model)
-        self._attr_unique_id = f"{coordinator.device_id}_request_location"
+        self._attr_unique_id = f"{coordinator.entry_id}_request_location"
 
     async def async_press(self) -> None:
         try:

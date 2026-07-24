@@ -1,4 +1,10 @@
-"""Config flow: email + password -> pick watch."""
+"""Config flow: email + password -> pick watch.
+
+Supports multiple watches (add the integration again to add a second kid's
+watch — the picker excludes watches already configured elsewhere) and
+reconfiguring an existing entry to point at a different watch, e.g. after a
+broken watch is replaced with a new one under a new FiLIP device_id.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +32,33 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
         self._password: str | None = None
         self._devices: list[dict[str, Any]] = []
 
+    async def _authenticate(
+        self, email: str, password: str
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        """Log in and list the account's watches. Returns (devices, errors)."""
+        client = CosmoClient(async_get_clientsession(self.hass), email, password)
+        try:
+            await client.login()
+            devices = await client.get_devices()
+        except CosmoAuthError:
+            return [], {"base": "invalid_auth"}
+        except CosmoApiError:
+            return [], {"base": "cannot_connect"}
+        return devices, {}
+
+    def _other_entry_device_ids(self, *, skip_entry_id: str | None = None) -> set[str]:
+        """device_ids already claimed by other Cosmo entries."""
+        return {
+            str(entry.data[CONF_DEVICE_ID])
+            for entry in self._async_current_entries()
+            if entry.entry_id != skip_entry_id
+        }
+
+    def _device_options(self, devices: list[dict[str, Any]]) -> dict[str, str]:
+        return {str(d["id"]): d.get("firstName") or f"Watch {d['id']}" for d in devices}
+
+    # --- initial setup: sign in, then pick a not-yet-configured watch -------
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -33,19 +66,13 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._email = user_input[CONF_EMAIL].strip().lower()
             self._password = user_input[CONF_PASSWORD]
-            client = CosmoClient(
-                async_get_clientsession(self.hass), self._email, self._password
-            )
-            try:
-                await client.login()
-                self._devices = await client.get_devices()
-            except CosmoAuthError:
-                errors["base"] = "invalid_auth"
-            except CosmoApiError:
-                errors["base"] = "cannot_connect"
-            else:
+            devices, errors = await self._authenticate(self._email, self._password)
+            if not errors:
+                already = self._other_entry_device_ids()
+                self._devices = [d for d in devices if str(d["id"]) not in already]
                 if not self._devices:
-                    return self.async_abort(reason="no_devices")
+                    reason = "no_devices" if not devices else "all_devices_configured"
+                    return self.async_abort(reason=reason)
                 return await self.async_step_device()
 
         return self.async_show_form(
@@ -66,12 +93,11 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
                 d for d in self._devices if str(d["id"]) == user_input[CONF_DEVICE_ID]
             )
             return await self._create(chosen)
-        options = {
-            str(d["id"]): d.get("firstName") or f"Watch {d['id']}" for d in self._devices
-        }
         return self.async_show_form(
             step_id="device",
-            data_schema=vol.Schema({vol.Required(CONF_DEVICE_ID): vol.In(options)}),
+            data_schema=vol.Schema(
+                {vol.Required(CONF_DEVICE_ID): vol.In(self._device_options(self._devices))}
+            ),
         )
 
     async def _create(self, device: dict[str, Any]) -> ConfigFlowResult:
@@ -88,4 +114,79 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
                 "name": name,
                 "model": device.get("hardwareName"),
             },
+        )
+
+    # --- reconfigure: swap which watch an existing entry talks to (e.g. the
+    # watch broke and got replaced) without losing entities/history, which
+    # are keyed off entry_id, not device_id. See custom_components/cosmo/entity.py.
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        self._email = entry.data[CONF_EMAIL]
+        self._password = entry.data[CONF_PASSWORD]
+        return await self.async_step_reconfigure_auth()
+
+    async def async_step_reconfigure_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._email = user_input[CONF_EMAIL].strip().lower()
+            self._password = user_input[CONF_PASSWORD]
+            devices, errors = await self._authenticate(self._email, self._password)
+            if not errors:
+                if not devices:
+                    return self.async_abort(reason="no_devices")
+                self._devices = devices
+                return await self.async_step_reconfigure_device()
+
+        return self.async_show_form(
+            step_id="reconfigure_auth",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_EMAIL, default=self._email): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        chosen: dict[str, Any] | None = None
+        if user_input is not None:
+            chosen = next(
+                d for d in self._devices if str(d["id"]) == user_input[CONF_DEVICE_ID]
+            )
+        elif len(self._devices) == 1:
+            chosen = self._devices[0]
+
+        if chosen is not None:
+            device_id = str(chosen["id"])
+            claimed = self._other_entry_device_ids(skip_entry_id=entry.entry_id)
+            if device_id in claimed:
+                return self.async_abort(reason="already_configured")
+            name = chosen.get("firstName") or entry.data.get("name") or "Cosmo Watch"
+            return self.async_update_reload_and_abort(
+                entry,
+                unique_id=device_id,
+                title=name,
+                data={
+                    CONF_EMAIL: self._email,
+                    CONF_PASSWORD: self._password,
+                    CONF_DEVICE_ID: device_id,
+                    "name": name,
+                    "model": chosen.get("hardwareName"),
+                },
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure_device",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_DEVICE_ID): vol.In(self._device_options(self._devices))}
+            ),
         )

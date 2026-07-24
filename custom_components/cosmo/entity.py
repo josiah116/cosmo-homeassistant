@@ -10,7 +10,15 @@ from .coordinator import CosmoCoordinator
 
 
 class CosmoEntity(CoordinatorEntity[CosmoCoordinator]):
-    """Common device wiring for all Cosmo entities."""
+    """Common device wiring for all Cosmo entities.
+
+    Identity (device identifiers + entity unique_ids) is anchored on the config
+    entry, NOT the FiLIP device_id. A watch can break and get replaced with a
+    new one carrying a different device_id — reconfiguring the entry to point
+    at the new device_id must not spawn a new HA device / new entity_ids and
+    orphan the history, so entry_id is the stable anchor and device_id is just
+    "whichever physical watch this entry currently talks to".
+    """
 
     _attr_has_entity_name = True
 
@@ -18,7 +26,7 @@ class CosmoEntity(CoordinatorEntity[CosmoCoordinator]):
         super().__init__(coordinator)
         d = coordinator.data or {}
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, str(coordinator.device_id))},
+            identifiers={(DOMAIN, coordinator.entry_id)},
             name=name,
             manufacturer=MANUFACTURER,
             model=model or "JrTrack",

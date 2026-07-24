@@ -14,6 +14,21 @@
         "data": {
           "device_id": "Watch"
         }
+      },
+      "reconfigure_auth": {
+        "title": "Cosmo account",
+        "description": "Sign in again to refresh which watches are available.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reconfigure_device": {
+        "title": "Select watch",
+        "description": "Pick which watch this integration should track. Use this after a watch is lost or replaced.",
+        "data": {
+          "device_id": "Watch"
+        }
       }
     },
     "error": {
@@ -22,7 +37,9 @@
     },
     "abort": {
       "no_devices": "No watches were found on this account.",
-      "already_configured": "This watch is already set up."
+      "already_configured": "This watch is already set up.",
+      "all_devices_configured": "Every watch on this account is already set up.",
+      "reconfigure_successful": "Watch updated."
     }
   },
   "entity": {

@@ -58,7 +58,7 @@ class CosmoBinarySensor(CosmoEntity, BinarySensorEntity):
     def __init__(self, coordinator, name, model, description: CosmoBinaryDescription) -> None:
         super().__init__(coordinator, name, model)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.device_id}_{description.key}"
+        self._attr_unique_id = f"{coordinator.entry_id}_{description.key}"
 
     @property
     def is_on(self) -> bool | None:

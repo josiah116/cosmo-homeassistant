@@ -29,7 +29,7 @@ class CosmoTracker(CosmoEntity, TrackerEntity):
 
     def __init__(self, coordinator, name, model) -> None:
         super().__init__(coordinator, name, model)
-        self._attr_unique_id = f"{coordinator.device_id}_tracker"
+        self._attr_unique_id = f"{coordinator.entry_id}_tracker"
 
     @property
     def source_type(self) -> SourceType:

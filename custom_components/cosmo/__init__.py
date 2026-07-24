@@ -8,6 +8,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import CosmoApiError, CosmoAuthError, CosmoClient
@@ -16,6 +18,7 @@ from .const import (
     CONF_EMAIL,
     CONF_PASSWORD,
     DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
 )
 from .coordinator import CosmoCoordinator
 
@@ -36,7 +39,34 @@ class CosmoRuntime:
 CosmoConfigEntry = ConfigEntry[CosmoRuntime]
 
 
+def _migrate_unique_ids(hass: HomeAssistant, entry: CosmoConfigEntry) -> None:
+    """One-time migration: entity unique_ids used to be keyed by the FiLIP
+    device_id (f"{device_id}_tracker" etc). That breaks if the watch is ever
+    replaced (new device_id) since a reconfigure would then spawn brand new
+    entity_ids and orphan history. Re-key existing entities onto entry_id,
+    which reconfigure never changes. Idempotent: no-op once migrated.
+    """
+    old_prefix = f"{entry.data[CONF_DEVICE_ID]}_"
+    new_prefix = f"{entry.entry_id}_"
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id.startswith(old_prefix):
+            registry.async_update_entity(
+                entity.entity_id,
+                new_unique_id=new_prefix + entity.unique_id[len(old_prefix) :],
+            )
+
+    old_device_ids = {(DOMAIN, str(entry.data[CONF_DEVICE_ID]))}
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(identifiers=old_device_ids)
+    if device is not None and entry.entry_id in device.config_entries:
+        device_registry.async_update_device(
+            device.id, new_identifiers={(DOMAIN, entry.entry_id)}
+        )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: CosmoConfigEntry) -> bool:
+    _migrate_unique_ids(hass, entry)
     client = CosmoClient(
         async_get_clientsession(hass),
         entry.data[CONF_EMAIL],
