@@ -1,0 +1,39 @@
+name: Watch upstream
+
+on:
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch upstream
+        run: git fetch https://github.com/kunalkhosla/cosmo-homeassistant.git main:refs/remotes/upstream/main
+      - name: Report upstream changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork contains current upstream main."
+            exit 0
+          fi
+
+          short_sha="$(git rev-parse --short upstream/main)"
+          title="Upstream update available: ${short_sha}"
+          if gh issue list --state open --search "${title} in:title" --json title --jq '.[].title' | grep -Fxq "${title}"; then
+            echo "Matching update issue already exists."
+            exit 0
+          fi
+
+          gh issue create \
+            --title "${title}" \
+            --body "Upstream main has commits not present in this fork. Run \`scripts/sync-upstream.sh\`, review the privacy invariants in \`UPSTREAM.md\`, validate, and publish a new immutable release. Upstream commit: \`${short_sha}\`."

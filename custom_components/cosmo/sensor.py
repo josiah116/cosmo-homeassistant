@@ -32,12 +32,6 @@ def _as_dt(v: Any):
 
 SENSORS: tuple[CosmoSensorDescription, ...] = (
     CosmoSensorDescription(
-        key="location",
-        translation_key="location",
-        icon="mdi:map-marker",
-        value_fn=lambda d: d.get("address"),
-    ),
-    CosmoSensorDescription(
         key="battery",
         translation_key="battery",
         device_class=SensorDeviceClass.BATTERY,
@@ -95,10 +89,3 @@ class CosmoSensor(CosmoEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self._device)
-
-    @property
-    def extra_state_attributes(self) -> dict | None:
-        """Expose the full geocoded address on the location sensor."""
-        if self.entity_description.key == "location":
-            return {"full_address": self._device.get("address_full")}
-        return None

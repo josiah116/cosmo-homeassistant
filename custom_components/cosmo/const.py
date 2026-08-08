@@ -25,8 +25,10 @@ def ep_settings(device_id: int | str) -> str:
     return f"{API_BASE}/settings/{device_id}"
 
 
-# Poll the server cache (last-known). Does NOT wake the watch.
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=10)
+# Poll the server cache (last-known). This does NOT wake the watch. Two minutes
+# keeps family dashboards and safety automations reasonably fresh while avoiding
+# aggressive private-API traffic.
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=2)
 # Refresh the access token this long before it expires.
 TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 
@@ -36,7 +38,7 @@ ACTIVE_TRACKING_DURATION = 300   # seconds the watch stays in turbo
 ACTIVE_TRACKING_FREQUENCY = 10   # seconds between fixes while in turbo
 
 CONF_EMAIL = "email"
-CONF_PASSWORD = "password"  # noqa: S105
+CONF_PASSWORD = "password"
 CONF_DEVICE_ID = "device_id"
 
 SERVICE_REQUEST_LOCATION = "request_location"

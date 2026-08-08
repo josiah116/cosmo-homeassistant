@@ -55,9 +55,6 @@
       },
       "firmware": {
         "name": "Firmware"
-      },
-      "location": {
-        "name": "Location"
       }
     },
     "binary_sensor": {

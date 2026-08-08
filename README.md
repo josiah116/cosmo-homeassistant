@@ -1,8 +1,9 @@
 # Cosmo Kids Watch — Home Assistant integration
 
-Unofficial Home Assistant integration for the [COSMO JrTrack](https://cosmotogether.com/)
-kids smartwatch. COSMO is a white-label of the **FiLIP** platform, so this talks
-to the same backend the official COSMO app uses (`api.myfilip.com`).
+Privacy-hardened fork of the unofficial Home Assistant integration for the
+[COSMO JrTrack](https://cosmotogether.com/) kids smartwatch. COSMO uses the
+**FiLIP** platform, so this talks to the same backend as the official COSMO app
+(`api.myfilip.com`).
 
 > Not affiliated with or endorsed by COSMO Together / FiLIP. Uses a private API
 > that may change or break at any time. Use with your own account, at your own risk.
@@ -27,16 +28,24 @@ Home Assistant's recorder logs every location update, giving you a **history
 trail / timeline the COSMO app itself doesn't offer**. Add a Map card with a
 history path to see where the watch has been.
 
-## Design: the watch is never polled on a schedule
+## Privacy hardening
 
-The scheduled poll only reads `/v2/map` — COSMO's **server cache** (last-known
-location/battery) — which never contacts the watch. The watch is woken only when
+This fork deliberately removes the upstream public Nominatim reverse-geocoding
+request. Exact child-location coordinates stay between COSMO, Home Assistant,
+and the clients you authorize; the integration does not forward each fix to a
+third-party geocoder. Home Assistant zones provide local, user-controlled place
+labels for dashboards and automations.
+
+## Design: scheduled reads never wake the watch
+
+The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
+(last-known location/battery) — which never contacts the watch. The watch is woken only when
 you press **Request location** (or call the service), so you decide when to spend
 its battery on a live fix.
 
 ## Installation (HACS)
 
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/kunalkhosla/cosmo-homeassistant`, category **Integration**.
+1. HACS → ⋮ → **Custom repositories** → add `https://github.com/josiah116/cosmo-homeassistant`, category **Integration**.
 2. Install **Cosmo Kids Watch**, then restart Home Assistant.
 3. **Settings → Devices & Services → Add Integration → Cosmo Kids Watch**.
 4. Enter your COSMO parent-account **email and password**.
@@ -70,6 +79,17 @@ Email + password → `POST /v2/token` → short-lived access token + refresh tok
 The integration renews the access token via `/v2/token/refresh` and falls back to
 a full re-login with the stored password if the refresh chain ever breaks — so it
 keeps working across restarts without re-prompting.
+
+Use a dedicated COSMO Guardian account where practical. The password is stored in
+Home Assistant's protected config-entry storage because the private API requires
+it for fallback reauthentication.
+
+## Tracking upstream
+
+The fork keeps `kunalkhosla/cosmo-homeassistant` as the `upstream` remote. A
+scheduled GitHub Action reports when upstream changes are available, and
+`scripts/sync-upstream.sh` performs a reviewed merge plus local validation. See
+[`UPSTREAM.md`](UPSTREAM.md) for the exact update and release procedure.
 
 ## License
 
