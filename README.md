@@ -28,6 +28,13 @@ Home Assistant's recorder logs every location update, giving you a **history
 trail / timeline the COSMO app itself doesn't offer**. Add a Map card with a
 history path to see where the watch has been.
 
+## Commissioning
+
+The pre-arrival state and post-activation checklist are maintained in
+[`COMMISSIONING.md`](COMMISSIONING.md). It covers pairing, dashboard completion,
+school arrival/departure notifications, acceptance tests, and rollback without
+storing credentials or private coordinates.
+
 ## Privacy hardening
 
 This fork deliberately removes the upstream public Nominatim reverse-geocoding
