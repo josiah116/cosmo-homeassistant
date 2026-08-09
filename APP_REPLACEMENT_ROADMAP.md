@@ -48,6 +48,8 @@ every two minutes; on-demand Active Tracking is battery-affecting.
 1. Add mocked API fixtures and tests for authentication, token refresh,
    coordinator errors, unchanged payloads, locate success/timeout/early-stop,
    unload cancellation, entity parsing, and config-entry migration.
+   Replace untyped payload access with validated response models so vendor field
+   drift becomes an explicit unavailable/error state rather than silent bad data.
 2. Add a redacted diagnostics export with endpoint status, payload schema keys,
    last successful poll, and error class—never credentials, coordinates, phone
    numbers, IMEI, or message/call data.
@@ -77,14 +79,21 @@ and no command can silently remain active.
    one has acknowledged; never auto-call emergency services.
 7. Rework the dashboard into Status, Safety, Location Controls, School, and
    Diagnostics sections, with normal state concise and faults prominent.
+8. Remove routine notification copy that tells parents to open Mission Control;
+   point to Home Assistant and identify the vendor app only as break-glass.
+9. Add school-calendar convention validation so renamed first-day, last-day, or
+   closure events create one actionable configuration fault instead of silently
+   disabling school gates.
 
 **Exit:** the app is unnecessary for normal location, alert, battery, and
 school-day operations.
 
 ## Phase 2 — passive API discovery and read-only parity
 
-Capture Mission Control traffic only on the family's authorized account. Do
-not blindly mutate the live child account. Record endpoint, method, redacted
+COSMO publishes no supported developer API or webhook contract. Treat this
+phase as experimental and fail closed if contracts cannot be proven. Capture
+Mission Control traffic only on the family's authorized account. Do not blindly
+mutate the live child account. Record endpoint, method, redacted
 request/response schema, idempotency behavior, and readback source for:
 
 - Focus/Lockdown schedules
@@ -122,6 +131,8 @@ and communications remain vendor/web/phone functions.
 - No exact coordinates, credentials, phone numbers, IMEI, or message content in
   diagnostics, logs, issues, or repository fixtures.
 - COSMO remains the system of record for emergency protocol and account access.
+- SOS live-tracking, listen-in/call behavior, and the optional 911 setting remain
+  vendor-owned even when Home Assistant mirrors and escalates the SOS state.
 
 ## App-removal exit criteria
 
@@ -129,7 +140,9 @@ Mission Control may be removed from daily phones after real-world arrival,
 departure, stale/fresh, low-battery/recovery, powered-off/recovery, and
 coordinated SOS tests pass; guardian/contact configuration is verified; the
 break-glass recovery method is documented and tested; and at least one school
-week completes without requiring the app.
+week completes without requiring the app. During burn-in, compare HA arrival,
+departure, and SOS timing against COSMO's native SafeZone/emergency behavior;
+do not remove the fallback until HA is at least as operationally reliable.
 
 ## Official evidence
 
