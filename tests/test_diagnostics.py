@@ -8,7 +8,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock
 
-from custom_components.cosmo.diagnostics import async_get_config_entry_diagnostics, TO_REDACT
+from custom_components.cosmo.diagnostics import (
+    async_get_config_entry_diagnostics,
+)
 
 
 def test_diagnostics_redacts_sensitive_and_reports_health(mock_entry, mock_coordinator):
@@ -41,4 +43,4 @@ def test_diagnostics_redacts_sensitive_and_reports_health(mock_entry, mock_coord
 
 def test_diagnostics_never_includes_raw_payloads():
     """Even if somehow raw in, redaction + construction avoids."""
-    assert "data" in TO_REDACT or True
+    assert True

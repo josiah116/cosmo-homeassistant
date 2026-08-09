@@ -1,4 +1,8 @@
-"""Binary sensors: emergency (SOS) mode, powered off."""
+"""Binary sensors: emergency (SOS) mode, powered off.
+
+Missing/malformed values return None (unavailable) not False.
+Active tracking unknown returns None (unavailable).
+"""
 
 from __future__ import annotations
 
@@ -30,9 +34,10 @@ BINARY_SENSORS: tuple[CosmoBinaryDescription, ...] = (
         translation_key="emergency",
         device_class=BinarySensorDeviceClass.SAFETY,
         icon="mdi:alarm-light",
-        value_fn=lambda d: bool( getattr(d, "emergency_mode", None) if hasattr(d,"emergency_mode") else (d.get("emergencyMode") if isinstance(d,dict) else None) ) ,
+        value_fn=lambda d: getattr(d, "emergency_mode", None)
+        if hasattr(d, "emergency_mode")
+        else (d.get("emergencyMode") if isinstance(d, dict) else None),
     ),
-
     CosmoBinaryDescription(
         key="cloud_reachable",
         translation_key="cloud_reachable",
@@ -51,7 +56,9 @@ BINARY_SENSORS: tuple[CosmoBinaryDescription, ...] = (
         key="powered_off",
         translation_key="powered_off",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda d: bool( getattr(d, "shutdown", None) if hasattr(d,"shutdown") else (d.get("shutdown") if isinstance(d,dict) else None) ) ,
+        value_fn=lambda d: getattr(d, "shutdown", None)
+        if hasattr(d, "shutdown")
+        else (d.get("shutdown") if isinstance(d, dict) else None),
     ),
 )
 
@@ -80,7 +87,12 @@ class CosmoBinarySensor(CosmoEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         key = self.entity_description.key
         if key == "cloud_reachable":
-            return bool(getattr(self.coordinator, "cloud_reachable", False))
+            cr = getattr(self.coordinator, "cloud_reachable", None)
+            return bool(cr) if cr is not None else None
         if key == "active_tracking":
-            return bool(getattr(self.coordinator, "active_tracking", False))
-        return self.entity_description.value_fn(self._device)
+            # unknown (None) or schema-invalid -> unavailable (None), not False
+            return getattr(self.coordinator, "active_tracking", None)
+        val = self.entity_description.value_fn(self._device)
+        if val is None:
+            return None
+        return bool(val)

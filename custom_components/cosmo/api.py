@@ -117,14 +117,20 @@ class CosmoClient:
         return None
 
     async def get_settings(self, device_id: int | str) -> CosmoSettings | None:
-        """Optional: read current settings (rate-safe use only, e.g. after command)."""
-        try:
-            data = await self._request("GET", ep_settings(device_id))
-            body = data.get("data", data) if isinstance(data, dict) else {}
-            return normalize_settings(body)
-        except Exception:
-            # fail closed, do not raise for optional read
-            return None
+        """Read current settings via GET /v2/settings. Does not swallow auth/api errors.
+
+        Critical: validates presence and type of activeTrackingEnable on readback.
+        Schema-invalid (None after normalize) -> CosmoApiError (fail closed, classified).
+        """
+        data = await self._request("GET", ep_settings(device_id))
+        body = data.get("data", data) if isinstance(data, dict) else {}
+        settings = normalize_settings(body)
+        if settings.active_tracking_enable is None:
+            # schema drift or missing critical field -> explicit classified error
+            raise CosmoApiError(
+                f"settings readback for {device_id} missing/invalid activeTrackingEnable"
+            )
+        return settings
 
     async def set_active_tracking(
         self, device_id: int | str, enable: bool, duration: int, frequency: int

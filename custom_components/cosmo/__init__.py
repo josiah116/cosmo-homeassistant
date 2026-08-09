@@ -68,14 +68,14 @@ def _migrate_unique_ids(hass: HomeAssistant, entry: CosmoConfigEntry) -> None:
 def _cleanup_stale_serial_metadata(hass: HomeAssistant, entry: CosmoConfigEntry) -> None:
     """Safely clear any legacy serial_number (IMEI) from this integration's device.
 
-    Never logs or inspects the value. Does not delete device/entity. Only
-    metadata for devices owned by this config entry. Other cleanup (e.g.
-    stale firmware entity unique_ids) left to HA entity registry tools if
-    pattern not 100% safe to auto-identify.
+    Never logs or reads/inspects the identifier value itself.
+    Does not delete device or any entity. Only metadata update.
+    Preserves all stable old unique IDs / entity IDs via prior migration.
     """
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    if device is not None and getattr(device, "serial_number", None) is not None:
+    if device is not None:
+        # set unconditionally; no getattr/read of the value
         device_registry.async_update_device(device.id, serial_number=None)
 
 

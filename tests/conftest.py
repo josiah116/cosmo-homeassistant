@@ -127,7 +127,8 @@ def mock_client():
     client.login = AsyncMock()
     client.get_devices = AsyncMock(return_value=MOCK_MAP_RESPONSE["data"]["Devices"])
     client.get_device = AsyncMock(return_value=MOCK_MAP_RESPONSE["data"]["Devices"][0])
-    client.get_settings = AsyncMock(return_value=MOCK_SETTINGS_RESPONSE["data"])
+    from custom_components.cosmo.models import normalize_settings as _ns
+    client.get_settings = AsyncMock(return_value=_ns(MOCK_SETTINGS_RESPONSE.get("data", {})))
     client.set_active_tracking = AsyncMock()
     client._request = AsyncMock()  # for lower level if needed
     return client
@@ -188,8 +189,13 @@ class _DummyDataUpdateCoordinator:
     async def async_request_refresh(self):
         pass
 
+    def async_update_listeners(self):
+        """Support health/outcome immediate updates even under always_update=False."""
+        # no body needed
+
 
 class _DummyCoordinatorEntity:
+    def __class_getitem__(cls, item): return cls
     def __init__(self, coordinator=None):
         self.coordinator = coordinator
 
@@ -201,6 +207,25 @@ _ha.helpers.update_coordinator.CoordinatorEntity = _DummyCoordinatorEntity
 if hasattr(sys.modules.get("homeassistant.helpers.update_coordinator"), "__dict__"):
     sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = _DummyDataUpdateCoordinator
     sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = _DummyCoordinatorEntity
+
+
+# Stub entity base classes to avoid metaclass conflicts in button/sensor tests
+class _StubButtonEntity:
+    pass
+
+class _StubSensorEntity:
+    pass
+
+class _StubBinarySensorEntity:
+    pass
+
+class _StubTrackerEntity:
+    pass
+
+sys.modules["homeassistant.components.button"].ButtonEntity = _StubButtonEntity
+sys.modules["homeassistant.components.sensor"].SensorEntity = _StubSensorEntity
+sys.modules["homeassistant.components.binary_sensor"].BinarySensorEntity = _StubBinarySensorEntity
+sys.modules["homeassistant.components.device_tracker"].TrackerEntity = _StubTrackerEntity
 
 print("Dummy HA bases injected for tests")
 

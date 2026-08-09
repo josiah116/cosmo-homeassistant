@@ -8,8 +8,6 @@ import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from custom_components.cosmo.coordinator import CosmoCoordinator
 from custom_components.cosmo.models import CosmoDevice, normalize_device
 
@@ -57,7 +55,7 @@ def test_coordinator_health_on_error():
     async def _run():
         try:
             await coord._async_update_data()
-        except Exception:
+        except Exception:  # noqa: BLE001,S110
             pass
         assert coord.last_error is not None
         assert coord.last_error_class == "CosmoAuthError"

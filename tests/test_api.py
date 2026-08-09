@@ -88,9 +88,8 @@ def test_auth_error_classification():
     async def _run():
         session = AsyncMock()
         client = CosmoClient(session, "e", "p")
-        with patch.object(client, "_request", side_effect=CosmoAuthError("401")):
-            with pytest.raises(CosmoAuthError):
-                await client.login()
+        with patch.object(client, "_request", side_effect=CosmoAuthError("401")), pytest.raises(CosmoAuthError):
+            await client.login()
     asyncio.run(_run())
 
 
@@ -99,7 +98,6 @@ def test_api_error_non_auth():
     async def _run():
         session = AsyncMock()
         client = CosmoClient(session, "e", "p")
-        with patch.object(client, "_request", side_effect=CosmoApiError("500")):
-            with pytest.raises(CosmoApiError):
-                await client.get_devices()
+        with patch.object(client, "_request", side_effect=CosmoApiError("500")), pytest.raises(CosmoApiError):
+            await client.get_devices()
     asyncio.run(_run())
