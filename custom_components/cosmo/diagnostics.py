@@ -8,11 +8,10 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import CosmoConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 from .coordinator import CosmoCoordinator
 
 TO_REDACT = [
@@ -32,23 +31,28 @@ TO_REDACT = [
     "lastName",
     "gsmNumber",
     "phone",
+    "phoneNumber",
+    "message",
+    "messages",
+    "call",
+    "calls",
     "data",  # raw would be redacted at top
 ]
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, entry: CosmoConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry (redacted)."""
-    rt: CosmoConfigEntry = entry  # type guard
-    coordinator: CosmoCoordinator = rt.runtime_data.coordinator if rt.runtime_data else None
+    runtime = entry.runtime_data
+    coordinator: CosmoCoordinator | None = runtime.coordinator if runtime else None
 
     diag: dict[str, Any] = {
         "integration": DOMAIN,
-        "version": "0.5.0",  # will sync from manifest later if needed
+        "version": VERSION,
         "entry_id": entry.entry_id,
         "device_id_present": bool(entry.data.get("device_id")),
-        "has_client": bool(rt.runtime_data and rt.runtime_data.client),
+        "has_client": bool(runtime and runtime.client),
         "has_coordinator": coordinator is not None,
         "cloud_reachable": getattr(coordinator, "cloud_reachable", None) if coordinator else None,
         "last_successful_poll": str(coordinator.last_successful_poll) if coordinator and coordinator.last_successful_poll else None,

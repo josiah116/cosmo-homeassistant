@@ -14,6 +14,7 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    API_BASE,
     APP_BUILD,
     EP_MAP,
     EP_TOKEN,
@@ -86,7 +87,13 @@ class CosmoClient:
         self._refresh = data.get("refreshToken")
         exp = data.get("expDate")
         if exp:
-            self._exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            try:
+                parsed_expiry = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            except (AttributeError, TypeError, ValueError) as err:
+                raise CosmoAuthError("auth response contained an invalid expiry") from err
+            if parsed_expiry.tzinfo is None:
+                parsed_expiry = parsed_expiry.replace(tzinfo=timezone.utc)
+            self._exp = parsed_expiry
         if not self._access:
             raise CosmoAuthError("login/refresh returned no accessToken")
 
@@ -107,7 +114,14 @@ class CosmoClient:
         """
         data = await self._request("GET", EP_MAP)
         body = data.get("data", {}) if isinstance(data, dict) else {}
-        return body.get("Devices", []) or []
+        if not isinstance(body, dict):
+            raise CosmoApiError("map response schema invalid")
+        devices = body.get("Devices")
+        if not isinstance(devices, list) or not all(
+            isinstance(device, dict) for device in devices
+        ):
+            raise CosmoApiError("map response schema invalid")
+        return devices
 
     async def get_device(self, device_id: int | str) -> CosmoDevice | None:
         """Return normalized device model (or None)."""
@@ -116,7 +130,7 @@ class CosmoClient:
                 return normalize_device(d)
         return None
 
-    async def get_settings(self, device_id: int | str) -> CosmoSettings | None:
+    async def get_settings(self, device_id: int | str) -> CosmoSettings:
         """Read current settings via GET /v2/settings. Does not swallow auth/api errors.
 
         Critical: validates presence and type of activeTrackingEnable on readback.
@@ -127,9 +141,7 @@ class CosmoClient:
         settings = normalize_settings(body)
         if settings.active_tracking_enable is None:
             # schema drift or missing critical field -> explicit classified error
-            raise CosmoApiError(
-                f"settings readback for {device_id} missing/invalid activeTrackingEnable"
-            )
+            raise CosmoApiError("settings readback missing/invalid activeTrackingEnable")
         return settings
 
     async def set_active_tracking(
@@ -144,6 +156,14 @@ class CosmoClient:
         await self._request("PUT", ep_settings(device_id), json=body)
 
     # --- transport ------------------------------------------------------------
+
+    @staticmethod
+    def _safe_endpoint(url: str) -> str:
+        """Return an endpoint label without account/device identifiers."""
+        endpoint = url.removeprefix(API_BASE)
+        if endpoint.startswith("/settings/"):
+            return "/settings/<device>"
+        return endpoint
 
     async def _request(
         self, method: str, url: str, *, json: Any = None, auth: bool = True
@@ -160,14 +180,19 @@ class CosmoClient:
         try:
             async with self._session.request(method, url, json=json, headers=headers) as resp:
                 text = await resp.text()
+                endpoint = self._safe_endpoint(url)
                 if resp.status in (401, 403):
-                    raise CosmoAuthError(f"{method} {url} -> {resp.status}")
+                    raise CosmoAuthError(f"{method} {endpoint} -> {resp.status}")
                 if resp.status >= 400:
-                    raise CosmoApiError(f"{method} {url} -> {resp.status}: {text[:200]}")
+                    # Never include vendor response bodies: they may contain private data.
+                    raise CosmoApiError(f"{method} {endpoint} -> {resp.status}")
                 body = await resp.json() if text else {}
                 # FiLIP signals expired tokens with status 2 in a 200 envelope.
                 if isinstance(body, dict) and body.get("status") == 2:
-                    raise CosmoAuthError(body.get("message", "token expired"))
+                    raise CosmoAuthError("token expired")
                 return body
         except aiohttp.ClientError as err:
-            raise CosmoApiError(f"{method} {url} failed: {err}") from err
+            endpoint = self._safe_endpoint(url)
+            raise CosmoApiError(
+                f"{method} {endpoint} failed: {type(err).__name__}"
+            ) from err

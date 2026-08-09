@@ -64,17 +64,8 @@ def _safe_int(v: Any) -> int | None:
 
 
 def _safe_bool(v: Any) -> bool | None:
-    if v is None:
-        return None
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, (int, str)):
-        s = str(v).strip().lower()
-        if s in ("true", "1", "yes", "on"):
-            return True
-        if s in ("false", "0", "no", "off"):
-            return False
-    return None
+    """Accept only JSON booleans; ambiguous representations stay unknown."""
+    return v if isinstance(v, bool) else None
 
 
 def normalize_device(raw: dict[str, Any]) -> CosmoDevice:
@@ -86,6 +77,12 @@ def normalize_device(raw: dict[str, Any]) -> CosmoDevice:
     lat = _safe_float(raw.get("latitude"))
     lon = _safe_float(raw.get("longitude"))
     rad = _safe_int(raw.get("radius"))
+    if lat is not None and not -90 <= lat <= 90:
+        lat = None
+    if lon is not None and not -180 <= lon <= 180:
+        lon = None
+    if rad is not None and rad < 0:
+        rad = None
     # If lat/lon present but invalid type, they become None (caller marks unavailable)
     return CosmoDevice(
         id=dev_id,

@@ -8,6 +8,9 @@ import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
+
 from custom_components.cosmo.coordinator import CosmoCoordinator
 from custom_components.cosmo.models import CosmoDevice, normalize_device
 
@@ -53,10 +56,8 @@ def test_coordinator_health_on_error():
     coord = _make_coordinator(client)
 
     async def _run():
-        try:
+        with pytest.raises(ConfigEntryAuthFailed):
             await coord._async_update_data()
-        except Exception:  # noqa: BLE001,S110
-            pass
         assert coord.last_error is not None
         assert coord.last_error_class == "CosmoAuthError"
     asyncio.run(_run())

@@ -39,7 +39,6 @@ class CosmoEntity(CoordinatorEntity[CosmoCoordinator]):
         data = self.coordinator.data
         if data is None:
             return {}
-        if hasattr(data, "__dict__") and not isinstance(data, dict):
-            # dataclass like
-            return {k: getattr(data, k) for k in data.__dataclass_fields__} if hasattr(data, "__dataclass_fields__") else vars(data)
-        return data if isinstance(data, dict) else {}
+        # Keep normalized models intact so entities read their snake_case fields.
+        # Raw dictionaries remain supported during migration/testing.
+        return data if isinstance(data, dict) or hasattr(data, "__dataclass_fields__") else {}

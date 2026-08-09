@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import compileall
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,8 @@ def main() -> None:
 
     assert manifest["domain"] == "cosmo"
     assert manifest["version"]
+    const_source = (COMPONENT / "const.py").read_text(encoding="utf-8")
+    assert f'VERSION = "{manifest["version"]}"' in const_source
     assert strings == translations, "English translation drifted from strings.json"
 
     runtime = "\n".join(
@@ -40,14 +43,57 @@ def main() -> None:
     tracker_source = (COMPONENT / "device_tracker.py").read_text(encoding="utf-8")
     assert "phone_number" not in tracker_source
     assert "gsmNumber" not in tracker_source
+    assert "def available" in tracker_source
+
+    entity_source = (COMPONENT / "entity.py").read_text(encoding="utf-8")
+    assert "serial_number" not in entity_source
+    assert "__dataclass_fields__" in entity_source
 
     coordinator_source = (COMPONENT / "coordinator.py").read_text(encoding="utf-8")
     assert "always_update=False" in coordinator_source
+    assert "get_settings" in coordinator_source
+    assert "location_fix_age" in coordinator_source
 
     button_source = (COMPONENT / "button.py").read_text(encoding="utf-8")
     assert "stop_active_tracking" in button_source or "async_stop_active_tracking" in button_source
     assert "_ACCEPTABLE_FIX_ACCURACY_METERS" in button_source or "100" in button_source
     assert "async_create_background_task" in button_source or "background_task" in button_source.lower() or "create_task" in button_source
+    assert "except Exception" not in button_source
+
+    api_source = (COMPONENT / "api.py").read_text(encoding="utf-8")
+    assert "<device>" in api_source
+    assert "text[:" not in api_source
+
+    diagnostics_source = (COMPONENT / "diagnostics.py").read_text(encoding="utf-8")
+    for key in (
+        "email",
+        "password",
+        "token",
+        "latitude",
+        "longitude",
+        "radius",
+        "gpsDate",
+        "phone",
+        "imei",
+        "serial_number",
+        "message",
+        "call",
+    ):
+        assert f'"{key}"' in diagnostics_source
+
+    tests = ROOT / "tests"
+    assert (tests / "test_locate_controls.py").exists()
+    assert (tests / "test_entities.py").exists()
+    fixtures = (tests / "conftest.py").read_text(encoding="utf-8")
+    assert "firstName" not in fixtures
+    assert not re.search(r'"(?:latitude|longitude)"\s*:\s*-?\d', fixtures)
+
+    workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "|| true" not in workflow
+    assert "ruff check ." in workflow
+    assert "-OO -m pytest" in workflow
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "josiah116/cosmo-homeassistant" in readme

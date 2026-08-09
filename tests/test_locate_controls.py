@@ -1,19 +1,7 @@
-"""Dedicated regression tests for locate controls (request, stop, early-stop, cooldown, duplicate suppression, cancellation, readback).
+"""Behavioral regression tests for user-initiated locate controls.
 
-Covers ALL mandatory cases:
-- request success
-- auth/API failure
-- timeout
-- duplicate suppression for the *entire* active locate workflow (not just lock)
-- cooldown
-- early stop *only* on a newer fix with 0 < accuracy <= 100m
-- explicit stop
-- command-time settings readback (not map)
-- managed-task cancellation/unload cleanup (bounded, re-raises Cancelled)
-- verify *no* automatic/scheduled requests (user-initiated only)
-
-All using sanitized mocks; no private data.
-Uses sync test + asyncio.run pattern (no pytest-asyncio dep).
+All payloads are synthetic and contain no credentials, personal identifiers, or
+coordinates. Tests invoke production coordinator/button methods directly.
 """
 
 from __future__ import annotations
@@ -33,198 +21,283 @@ from custom_components.cosmo.coordinator import CosmoCoordinator
 from custom_components.cosmo.models import normalize_device, normalize_settings
 
 
-def _make_coord(client, device_id="12345"):
-    hass = MagicMock()
+class _ManagedEntry:
+    """Minimal config-entry task manager that creates real asyncio tasks."""
+
+    def __init__(self) -> None:
+        self.entry_id = "entry-test"
+        self.tasks: list[asyncio.Task] = []
+
+    def async_create_background_task(self, hass, coro, name):
+        task = asyncio.create_task(coro, name=name)
+        self.tasks.append(task)
+        return task
+
+
+def _make_coord(client, device_id="watch-test") -> CosmoCoordinator:
     entry = MagicMock()
-    entry.entry_id = "e123"
-    entry.data = {"device_id": device_id}
-    coord = CosmoCoordinator(hass, entry, client, device_id, timedelta(seconds=30))
-    coord.data = normalize_device({"id": device_id, "gpsDate": "2026-08-09T12:00:00Z", "radius": 50, "activeTrackingEnable": False})
+    entry.entry_id = "entry-test"
+    coord = CosmoCoordinator(
+        MagicMock(), entry, client, device_id, timedelta(seconds=30)
+    )
+    coord.data = normalize_device(
+        {
+            "id": device_id,
+            "gpsDate": "2026-08-09T12:00:00Z",
+            "radius": 50,
+            "activeTrackingEnable": False,
+        }
+    )
+    coord.async_update_listeners = MagicMock()
     return coord
 
 
-def _make_button(coord, entry):
-    b = CosmoLocateButton(coord, "Test", "JrTrack", entry)
-    b.hass = MagicMock()
-    return b
+def _make_button(coord, entry=None) -> CosmoLocateButton:
+    button = CosmoLocateButton(coord, "Mock Watch", "JrTrack", entry or _ManagedEntry())
+    button.hass = MagicMock()
+    return button
 
 
-def _make_stop_button(coord, entry):
-    b = CosmoStopActiveTrackingButton(coord, "Test", "JrTrack", entry)
-    b.hass = MagicMock()
-    return b
+def _make_stop_button(coord, entry=None) -> CosmoStopActiveTrackingButton:
+    button = CosmoStopActiveTrackingButton(
+        coord, "Mock Watch", "JrTrack", entry or _ManagedEntry()
+    )
+    button.hass = MagicMock()
+    return button
 
 
-def test_locate_request_success_uses_settings_readback(mock_client):
-    """Success path: set + get_settings readback (not map) validates and sets outcome."""
-    client = mock_client
-    settings_enabled = normalize_settings({"activeTrackingEnable": True, "activeTrackingDuration": 300})
-    client.get_settings = AsyncMock(return_value=settings_enabled)
-    coord = _make_coord(client)
-    entry = MagicMock()
-    entry.async_create_background_task = MagicMock(return_value=MagicMock(done=lambda: False))
-    btn = _make_button(coord, entry)
-
+def test_request_success_requires_true_settings_readback(mock_client):
     async def _run():
-        await btn.async_press()
+        client = mock_client
+        client.get_settings = AsyncMock(
+            return_value=normalize_settings({"activeTrackingEnable": True})
+        )
+        coord = _make_coord(client)
+        coord.async_request_refresh = AsyncMock()
+
+        assert await coord.async_request_locate() is True
+        client.set_active_tracking.assert_awaited_once()
+        client.get_settings.assert_awaited_once_with("watch-test")
+        coord.async_request_refresh.assert_awaited_once()
+        assert coord.active_tracking is True
+        assert coord.last_locate_outcome == "success"
+
     asyncio.run(_run())
 
-    client.set_active_tracking.assert_awaited()
-    client.get_settings.assert_awaited()
-    assert coord.last_locate_outcome == "success"
-    assert coord.active_tracking is True
-    entry.async_create_background_task.assert_called()
 
-
-def test_locate_request_auth_failure_surfaces_correctly(mock_client):
-    client = mock_client
-    client.set_active_tracking = AsyncMock(side_effect=CosmoAuthError("401"))
-    coord = _make_coord(client)
-    entry = MagicMock()
-    entry.async_create_background_task = MagicMock()
-    btn = _make_button(coord, entry)
-
+def test_request_false_readback_fails_closed(mock_client):
     async def _run():
-        await btn.async_press()
+        client = mock_client
+        client.get_settings = AsyncMock(
+            return_value=normalize_settings({"activeTrackingEnable": False})
+        )
+        coord = _make_coord(client)
+        coord.async_request_refresh = AsyncMock()
+
+        assert await coord.async_request_locate() is False
+        assert coord.active_tracking is False
+        assert coord.last_locate_outcome == "error:tracking_not_enabled"
+        coord.async_request_refresh.assert_not_awaited()
+
     asyncio.run(_run())
 
-    assert "error:" in (coord.last_locate_outcome or "")
-    entry.async_create_background_task.assert_not_called()
 
-
-def test_locate_request_api_failure_and_no_success_claim_without_valid_readback(mock_client):
-    client = mock_client
-    client.set_active_tracking = AsyncMock()
-    client.get_settings = AsyncMock(return_value=normalize_settings({}))
-    coord = _make_coord(client)
-    entry = MagicMock()
-    entry.async_create_background_task = MagicMock()
-    btn = _make_button(coord, entry)
-
+@pytest.mark.parametrize("error", [CosmoAuthError("auth"), CosmoApiError("api")])
+def test_request_errors_are_classified_and_reraised(mock_client, error):
     async def _run():
-        await btn.async_press()
+        client = mock_client
+        client.set_active_tracking = AsyncMock(side_effect=error)
+        coord = _make_coord(client)
+
+        with pytest.raises(type(error)):
+            await coord.async_request_locate()
+        assert coord.last_locate_outcome == f"error:{type(error).__name__}"
+        assert coord.active_tracking is None
+
     asyncio.run(_run())
 
-    assert coord.last_locate_outcome in (None, "error:settings_invalid") or "error" in str(coord.last_locate_outcome)
-    assert coord.active_tracking is None or coord.active_tracking is False
 
-
-def test_cooldown_prevents_request_and_sets_outcome(mock_client):
-    client = mock_client
-    coord = _make_coord(client)
-    coord._last_locate_attempt = datetime.now(timezone.utc) - timedelta(seconds=10)
-    entry = MagicMock()
-    btn = _make_button(coord, entry)
-
+def test_cooldown_blocks_put(mock_client):
     async def _run():
-        await btn.async_press()
+        coord = _make_coord(mock_client)
+        coord._last_locate_attempt = datetime.now(timezone.utc) - timedelta(seconds=10)
+
+        assert await coord.async_request_locate() is False
+        mock_client.set_active_tracking.assert_not_awaited()
+        assert coord.last_locate_outcome == "cooldown"
+
     asyncio.run(_run())
 
-    client.set_active_tracking.assert_not_awaited()
-    assert coord.last_locate_outcome == "cooldown"
 
-
-def test_duplicate_task_suppression_full_lifetime(mock_client):
-    """Locate task duplicate suppressed for full lifetime (beyond just _locate_lock)."""
-    client = mock_client
-    coord = _make_coord(client)
-    entry = MagicMock()
-    fake_task = MagicMock()
-    fake_task.done.return_value = False
-    entry.async_create_background_task.return_value = fake_task
-    btn = _make_button(coord, entry)
-    btn._locate_task = fake_task
-
+def test_duplicate_workflow_is_suppressed_before_battery_affecting_request(mock_client):
     async def _run():
-        await btn.async_press()
-    asyncio.run(_run())
-
-    entry.async_create_background_task.assert_not_called()
-
-
-def test_early_stop_only_on_newer_fix_good_accuracy(mock_client):
-    """Early stop only when newer fix AND 0 < acc <= 100m ."""
-    client = mock_client
-    coord = _make_coord(client)
-    pre = "2026-08-09T12:00:00Z"
-    coord.data = normalize_device({"id": "12345", "gpsDate": pre, "radius": 200})
-    entry = MagicMock()
-    entry.async_create_background_task = MagicMock()
-    btn = _make_button(coord, entry)
-
-    async def _run():
-        with patch("asyncio.sleep", new=AsyncMock()):
-            coord.async_request_refresh = AsyncMock()
-            coord.data = normalize_device({"id": "12345", "gpsDate": "2026-08-09T12:06:00Z", "radius": 40})
-            await btn._poll_for_fix_and_maybe_stop(pre)
-    asyncio.run(_run())
-    assert True
-
-
-def test_explicit_stop_button_uses_settings_readback(mock_client):
-    client = mock_client
-    settings_off = normalize_settings({"activeTrackingEnable": False})
-    client.get_settings = AsyncMock(return_value=settings_off)
-    coord = _make_coord(client)
-    entry = MagicMock()
-    btn = _make_stop_button(coord, entry)
-
-    async def _run():
-        await btn.async_press()
-    asyncio.run(_run())
-
-    client.set_active_tracking.assert_awaited()
-    client.get_settings.assert_awaited()
-    assert coord.last_locate_outcome == "stopped"
-    assert coord.active_tracking is False
-
-
-def test_managed_task_cancellation_does_bounded_cleanup_and_reraises(mock_client):
-    client = mock_client
-    coord = _make_coord(client)
-    entry = MagicMock()
-    entry.async_create_background_task = MagicMock()
-    btn = _make_button(coord, entry)
-
-    async def fake_poll():
+        coord = _make_coord(mock_client)
+        coord.async_request_locate = AsyncMock(return_value=True)
+        button = _make_button(coord)
+        blocker = asyncio.Event()
+        task = asyncio.create_task(blocker.wait())
+        button._locate_task = task
         try:
-            await asyncio.sleep(10)
-        except asyncio.CancelledError:
-            try:
-                await asyncio.wait_for(coord.async_stop_active_tracking(), timeout=2)
-            except (asyncio.TimeoutError, CosmoApiError, CosmoAuthError):
-                pass
-            raise
+            await button.async_press()
+            coord.async_request_locate.assert_not_awaited()
+            assert coord.last_locate_outcome == "duplicate"
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
 
+    asyncio.run(_run())
+
+
+def test_button_passes_pre_command_fix_to_managed_poll_task(mock_client):
     async def _run():
-        task = asyncio.create_task(fake_poll())
-        btn._locate_task = task
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        coord = _make_coord(mock_client)
+        coord.async_request_locate = AsyncMock(return_value=True)
+        entry = _ManagedEntry()
+        button = _make_button(coord, entry)
+        button._poll_for_fix_and_maybe_stop = AsyncMock()
+
+        await button.async_press()
+        await entry.tasks[0]
+        button._poll_for_fix_and_maybe_stop.assert_awaited_once_with(
+            "2026-08-09T12:00:00Z"
+        )
+
+    asyncio.run(_run())
+
+
+def test_early_stop_requires_new_fix_and_good_accuracy(mock_client):
+    async def _run():
+        coord = _make_coord(mock_client)
+        coord.async_stop_active_tracking = AsyncMock(return_value=True)
+
+        async def _refresh():
+            coord.data = normalize_device(
+                {
+                    "id": "watch-test",
+                    "gpsDate": "2026-08-09T12:01:00Z",
+                    "radius": 40,
+                }
+            )
+
+        coord.async_request_refresh = AsyncMock(side_effect=_refresh)
+        button = _make_button(coord)
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (0,)):
+            await button._poll_for_fix_and_maybe_stop("2026-08-09T12:00:00Z")
+        coord.async_stop_active_tracking.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize(
+    ("fix", "accuracy"),
+    [
+        ("2026-08-09T12:00:00Z", 40),
+        ("2026-08-09T12:01:00Z", 0),
+        ("2026-08-09T12:01:00Z", 101),
+        ("2026-08-09T12:01:00Z", None),
+    ],
+)
+def test_early_stop_rejects_old_or_inaccurate_fix(mock_client, fix, accuracy):
+    async def _run():
+        coord = _make_coord(mock_client)
+        coord.data = normalize_device(
+            {"id": "watch-test", "gpsDate": fix, "radius": accuracy}
+        )
+        coord.async_request_refresh = AsyncMock()
+        coord.async_stop_active_tracking = AsyncMock(return_value=True)
+        button = _make_button(coord)
+
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (0,)):
+            await button._poll_for_fix_and_maybe_stop("2026-08-09T12:00:00Z")
+        coord.async_stop_active_tracking.assert_not_awaited()
+        assert coord.last_locate_outcome == "timeout"
+
+    asyncio.run(_run())
+
+
+def test_explicit_stop_requires_false_settings_readback(mock_client):
+    async def _run():
+        client = mock_client
+        client.get_settings = AsyncMock(
+            return_value=normalize_settings({"activeTrackingEnable": False})
+        )
+        coord = _make_coord(client)
+        coord.async_request_refresh = AsyncMock()
+        button = _make_stop_button(coord)
+
+        await button.async_press()
+        client.set_active_tracking.assert_awaited_once()
+        client.get_settings.assert_awaited_once_with("watch-test")
+        coord.async_request_refresh.assert_awaited_once()
+        assert coord.active_tracking is False
+        assert coord.last_locate_outcome == "stopped"
+
+    asyncio.run(_run())
+
+
+def test_cancel_during_sleep_attempts_cleanup_and_reraises(mock_client):
+    async def _run():
+        coord = _make_coord(mock_client)
+        coord.async_stop_active_tracking = AsyncMock(return_value=True)
+        button = _make_button(coord)
+
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (3600,)):
+            task = asyncio.create_task(
+                button._poll_for_fix_and_maybe_stop("2026-08-09T12:00:00Z")
+            )
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        coord.async_stop_active_tracking.assert_awaited_once()
+
+    asyncio.run(_run())
+
+
+def test_entity_removal_awaits_cancelled_workflow_cleanup(mock_client):
+    async def _run():
+        coord = _make_coord(mock_client)
+        coord.async_stop_active_tracking = AsyncMock(return_value=True)
+        button = _make_button(coord)
+
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (3600,)):
+            task = asyncio.create_task(
+                button._poll_for_fix_and_maybe_stop("2026-08-09T12:00:00Z")
+            )
+            button._locate_task = task
+            await asyncio.sleep(0)
+            await button.async_will_remove_from_hass()
+        assert task.done()
         assert task.cancelled()
+        coord.async_stop_active_tracking.assert_awaited_once()
+
     asyncio.run(_run())
 
 
-def test_no_automatic_or_scheduled_locate_requests_ever(mock_client):
-    """Regression: locate only via button press, never scheduled or auto."""
-    client = mock_client
-    coord = _make_coord(client)
+def test_timeout_consumes_bounded_retries_and_records_outcome(mock_client):
     async def _run():
+        coord = _make_coord(mock_client)
+        coord.async_request_refresh = AsyncMock(side_effect=asyncio.TimeoutError)
+        button = _make_button(coord)
+
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (0, 0, 0)):
+            await button._poll_for_fix_and_maybe_stop("2026-08-09T12:00:00Z")
+        assert coord.async_request_refresh.await_count == 3
+        assert coord.last_locate_outcome == "timeout"
+        assert coord.last_locate_time is not None
+
+    asyncio.run(_run())
+
+
+def test_normal_poll_never_starts_active_tracking(mock_client):
+    async def _run():
+        coord = _make_coord(mock_client)
+        mock_client.get_device = AsyncMock(
+            return_value=normalize_device({"id": "watch-test"})
+        )
         await coord._async_update_data()
+        mock_client.set_active_tracking.assert_not_awaited()
+        mock_client.get_settings.assert_not_awaited()
+
     asyncio.run(_run())
-    client.set_active_tracking.assert_not_awaited()
-
-
-def test_locate_timeout_path_and_failure_outcome(mock_client):
-    client = mock_client
-    coord = _make_coord(client)
-    entry = MagicMock()
-    btn = _make_button(coord, entry)
-
-    async def _run():
-        with patch("asyncio.sleep", new=AsyncMock()):
-            coord.async_request_refresh = AsyncMock(side_effect=asyncio.TimeoutError("sim"))
-            await btn._poll_for_fix_and_maybe_stop("old")
-    asyncio.run(_run())
-    assert True

@@ -31,8 +31,8 @@ def test_normalize_device_from_map_payload(mock_map_payload):
     assert device.id == "12345"
     assert device.battery_level == 87
     assert device.gps_date == "2026-08-09T12:34:56Z"
-    assert device.latitude == 40.7128
-    assert device.longitude == -74.0060
+    assert device.latitude is None
+    assert device.longitude is None
     assert device.radius == 45
     assert device.emergency_mode is False
     assert device.shutdown is False
@@ -78,8 +78,8 @@ def test_client_get_device_uses_normalized(mock_client):
     """Client get_device returns normalized (post update)."""
     async def _run():
         device = await mock_client.get_device("12345")
-        if device is not None:
-            assert isinstance(device, (dict, CosmoDevice))
+        assert isinstance(device, CosmoDevice)
+
     asyncio.run(_run())
 
 
@@ -101,3 +101,58 @@ def test_api_error_non_auth():
         with patch.object(client, "_request", side_effect=CosmoApiError("500")), pytest.raises(CosmoApiError):
             await client.get_devices()
     asyncio.run(_run())
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {},
+        {"data": []},
+        {"data": {}},
+        {"data": {"Devices": {}}},
+        {"data": {"Devices": ["invalid"]}},
+    ],
+)
+def test_map_schema_drift_is_classified(response):
+    async def _run():
+        client = CosmoClient(AsyncMock(), "account", "placeholder")
+        with (
+            patch.object(client, "_request", AsyncMock(return_value=response)),
+            pytest.raises(CosmoApiError, match="schema invalid"),
+        ):
+            await client.get_devices()
+
+    asyncio.run(_run())
+
+
+def test_settings_critical_state_requires_boolean():
+    async def _run():
+        client = CosmoClient(AsyncMock(), "account", "placeholder")
+        response = {"data": {"activeTrackingEnable": "false"}}
+        with (
+            patch.object(client, "_request", AsyncMock(return_value=response)),
+            pytest.raises(CosmoApiError, match="activeTrackingEnable"),
+        ):
+            await client.get_settings("watch-test")
+
+    asyncio.run(_run())
+
+
+def test_invalid_token_expiry_is_auth_error():
+    client = CosmoClient(AsyncMock(), "account", "placeholder")
+    with pytest.raises(CosmoAuthError, match="invalid expiry"):
+        client._store_tokens(
+            {
+                "accessToken": "synthetic-token",
+                "expDate": "not-a-timestamp",
+            }
+        )
+
+
+def test_private_device_id_is_redacted_from_error_endpoint():
+    client = CosmoClient(AsyncMock(), "account", "placeholder")
+    safe_endpoint = client._safe_endpoint(
+        "https://api.myfilip.com/v2/settings/private-device-reference"
+    )
+    assert safe_endpoint == "/settings/<device>"
+    assert "private-device-reference" not in safe_endpoint

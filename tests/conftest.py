@@ -9,6 +9,9 @@ without requiring the full Home Assistant package (per task constraints).
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 # --- Narrow HA / dep stubs (module level, before any cosmo import) -------------
@@ -35,11 +38,35 @@ sys.modules["homeassistant.components.device_tracker"] = _ha.components.device_t
 sys.modules["homeassistant.util"] = _ha.util
 sys.modules["homeassistant.util.dt"] = _ha.util.dt
 
+
+class _ConfigEntryAuthFailed(Exception):
+    pass
+
+
+class _ConfigEntryNotReady(Exception):
+    pass
+
+
+class _UpdateFailed(Exception):
+    pass
+
+
+_ha.exceptions.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
+_ha.exceptions.ConfigEntryNotReady = _ConfigEntryNotReady
+
+
+def _parse_datetime(value: str):
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+_ha.util.dt.parse_datetime = _parse_datetime
+
 # voluptuous used in config_flow
 if "voluptuous" not in sys.modules:
     sys.modules["voluptuous"] = MagicMock(name="voluptuous_stub")
-
-from unittest.mock import MagicMock  # reimport after sys mods for clarity
 
 import pytest
 
@@ -50,14 +77,11 @@ MOCK_MAP_RESPONSE = {
         "Devices": [
             {
                 "id": "12345",
-                "firstName": "TestKid",
                 "hardwareName": "JrTrack 5",
                 "batteryLevel": 87,
                 "externalBatteryLevel": 92,
                 "gpsDate": "2026-08-09T12:34:56Z",
                 "firmwareVersion": "1.2.3",
-                "latitude": 40.7128,
-                "longitude": -74.0060,
                 "radius": 45,
                 "emergencyMode": False,
                 "shutdown": False,
@@ -85,14 +109,11 @@ MOCK_MAP_RESPONSE_ACTIVE = {
         "Devices": [
             {
                 "id": "12345",
-                "firstName": "TestKid",
                 "hardwareName": "JrTrack 5",
                 "batteryLevel": 85,
                 "externalBatteryLevel": 90,
                 "gpsDate": "2026-08-09T12:35:10Z",
                 "firmwareVersion": "1.2.3",
-                "latitude": 40.7128,
-                "longitude": -74.0060,
                 "radius": 12,  # good accuracy
                 "emergencyMode": False,
                 "shutdown": False,
@@ -126,8 +147,16 @@ def mock_client():
     client = MagicMock()
     client.login = AsyncMock()
     client.get_devices = AsyncMock(return_value=MOCK_MAP_RESPONSE["data"]["Devices"])
-    client.get_device = AsyncMock(return_value=MOCK_MAP_RESPONSE["data"]["Devices"][0])
-    from custom_components.cosmo.models import normalize_settings as _ns
+    from custom_components.cosmo.models import (
+        normalize_device as _nd,
+    )
+    from custom_components.cosmo.models import (
+        normalize_settings as _ns,
+    )
+
+    client.get_device = AsyncMock(
+        return_value=_nd(MOCK_MAP_RESPONSE["data"]["Devices"][0])
+    )
     client.get_settings = AsyncMock(return_value=_ns(MOCK_SETTINGS_RESPONSE.get("data", {})))
     client.set_active_tracking = AsyncMock()
     client._request = AsyncMock()  # for lower level if needed
@@ -154,10 +183,10 @@ def mock_entry():
     entry = MagicMock()
     entry.entry_id = "test_entry_abc123"
     entry.data = {
-        "email": "test@example.com",
-        "password": "testpass",
+        "email": "account@example.invalid",
+        "password": "synthetic-placeholder",
         "device_id": "12345",
-        "name": "TestKid",
+        "name": "Mock Watch",
         "model": "JrTrack 5",
     }
     entry.runtime_data = None
@@ -199,17 +228,35 @@ class _DummyCoordinatorEntity:
     def __init__(self, coordinator=None):
         self.coordinator = coordinator
 
+    @property
+    def available(self):
+        return bool(getattr(self.coordinator, "last_update_success", True))
+
 
 # inject so that "from ... import ..." in modules get usable types
 _ha.helpers.update_coordinator.DataUpdateCoordinator = _DummyDataUpdateCoordinator
 _ha.helpers.update_coordinator.CoordinatorEntity = _DummyCoordinatorEntity
+_ha.helpers.update_coordinator.UpdateFailed = _UpdateFailed
 
 if hasattr(sys.modules.get("homeassistant.helpers.update_coordinator"), "__dict__"):
     sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = _DummyDataUpdateCoordinator
     sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = _DummyCoordinatorEntity
+    sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = _UpdateFailed
 
 
 # Stub entity base classes to avoid metaclass conflicts in button/sensor tests
+@dataclass(frozen=True, kw_only=True)
+class _StubEntityDescription:
+    key: str
+    translation_key: str | None = None
+    device_class: Any = None
+    native_unit_of_measurement: Any = None
+    state_class: Any = None
+    entity_category: Any = None
+    entity_registry_enabled_default: bool = True
+    icon: str | None = None
+
+
 class _StubButtonEntity:
     pass
 
@@ -224,14 +271,16 @@ class _StubTrackerEntity:
 
 sys.modules["homeassistant.components.button"].ButtonEntity = _StubButtonEntity
 sys.modules["homeassistant.components.sensor"].SensorEntity = _StubSensorEntity
+sys.modules["homeassistant.components.sensor"].SensorEntityDescription = _StubEntityDescription
 sys.modules["homeassistant.components.binary_sensor"].BinarySensorEntity = _StubBinarySensorEntity
+sys.modules[
+    "homeassistant.components.binary_sensor"
+].BinarySensorEntityDescription = _StubEntityDescription
 sys.modules["homeassistant.components.device_tracker"].TrackerEntity = _StubTrackerEntity
-
-print("Dummy HA bases injected for tests")
 
 class _DummyConfigEntry:
     def __class_getitem__(cls, item): return cls
-    def __init__(self, *a, **k): 
+    def __init__(self, *a, **k):
         self.entry_id = k.get("entry_id", "dummy")
         self.data = k.get("data", {})
         self.runtime_data = None
@@ -279,4 +328,3 @@ if "homeassistant.components.diagnostics" not in sys.modules:
     _ha = sys.modules.get("homeassistant")
     if _ha:
         _ha.components.diagnostics = _diag
-print("diagnostics mock ready")

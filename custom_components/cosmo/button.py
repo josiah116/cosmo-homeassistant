@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
@@ -59,6 +60,13 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
         self._locate_task: asyncio.Task | None = None
 
     async def async_press(self) -> None:
+        # Suppress before issuing another battery-affecting Active Tracking request.
+        if self._locate_task and not self._locate_task.done():
+            _LOGGER.debug("locate workflow already active; suppressing duplicate")
+            self.coordinator.last_locate_outcome = "duplicate"
+            self.coordinator.async_update_listeners()
+            return
+
         # Capture pre-command fix *before* the locate which does its own refresh/readback
         # so that first genuine fresh fix (newer gps_date) can be recognized.
         dev0 = self.coordinator.data
@@ -79,11 +87,6 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
             self.coordinator.async_update_listeners()
             raise
 
-        # Duplicate suppression for the *full* locate workflow lifetime (not just lock)
-        if self._locate_task and not self._locate_task.done():
-            _LOGGER.debug("locate poll task already active; suppressing duplicate")
-            return
-
         # background re-poll for early stop on good accuracy (bounded)
         # use config-entry-managed task
         self._locate_task = self._entry.async_create_background_task(
@@ -103,10 +106,21 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
             dev0 = self.coordinator.data
             previous_fix = getattr(dev0, "gps_date", None) if dev0 else None
 
-        for delay in _POLL_DELAYS:
-            await asyncio.sleep(delay)
-            try:
-                await self.coordinator.async_request_refresh()
+        try:
+            for delay in _POLL_DELAYS:
+                await asyncio.sleep(delay)
+                try:
+                    await self.coordinator.async_request_refresh()
+                except (
+                    CosmoApiError,
+                    CosmoAuthError,
+                    TimeoutError,
+                    asyncio.TimeoutError,
+                ) as err:
+                    _LOGGER.debug(
+                        "locate poll iteration failed: %s", type(err).__name__
+                    )
+                    continue
                 dev = self.coordinator.data
                 if not dev:
                     continue
@@ -127,25 +141,28 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
                     except (CosmoApiError, CosmoAuthError) as err:
                         _LOGGER.warning("early-stop failed (fail-closed): %s", err)
                     return
-            except asyncio.CancelledError:
-                # bounded cleanup on cancel/unload, then re-raise
-                try:
-                    await asyncio.wait_for(
-                        self.coordinator.async_stop_active_tracking(), timeout=_CLEANUP_TIMEOUT
-                    )
-                except (asyncio.TimeoutError, CosmoApiError, CosmoAuthError):
-                    # bounded, fail closed, no blind pass
-                    pass
-                raise
-            except (CosmoApiError, CosmoAuthError, TimeoutError, asyncio.TimeoutError) as err:
-                _LOGGER.debug("poll iteration error (non fatal): %s", err)
-            # do not catch broad Exception
+        except asyncio.CancelledError:
+            # Includes cancellation during the sleep interval.
+            try:
+                await asyncio.wait_for(
+                    self.coordinator.async_stop_active_tracking(), timeout=_CLEANUP_TIMEOUT
+                )
+            except (asyncio.TimeoutError, CosmoApiError, CosmoAuthError) as err:
+                _LOGGER.debug("cancel cleanup did not complete: %s", type(err).__name__)
+            raise
+        self.coordinator.last_locate_outcome = "timeout"
+        self.coordinator.last_locate_time = datetime.now(timezone.utc)
+        self.coordinator.async_update_listeners()
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel any running locate poll task on entity unload (managed cleanup)."""
         if self._locate_task and not self._locate_task.done():
             self._locate_task.cancel()
-            # do not await (may be during unload); task will cleanup bounded
+            try:
+                await self._locate_task
+            except asyncio.CancelledError:
+                # The cancelled workflow completed its bounded cleanup.
+                _LOGGER.debug("locate workflow cancelled during entity removal")
 
 
 class CosmoStopActiveTrackingButton(CosmoEntity, ButtonEntity):

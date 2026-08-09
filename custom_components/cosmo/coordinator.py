@@ -37,7 +37,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         super().__init__(
             hass,
             logging.getLogger(__name__),
-            name=f"{DOMAIN}_{device_id}",
+            name=f"{DOMAIN}_{entry.entry_id}",
             update_interval=scan_interval,
             config_entry=entry,
             # /v2/map returns stable JSON-derived dicts; skip listener callbacks
@@ -72,7 +72,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
             self.last_error_class = "CosmoApiError"
             raise UpdateFailed(str(err)) from err
         if device is None:
-            err = UpdateFailed(f"device {self.device_id} not found on account")
+            err = UpdateFailed("configured watch not found on account")
             self.last_error = err
             self.last_error_class = "UpdateFailed"
             raise err
@@ -89,7 +89,11 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
     @property
     def cloud_reachable(self) -> bool:
         """True if last coordinator update succeeded (cloud reachability health)."""
-        return getattr(self, "last_update_success", False)
+        # `_async_update_data` notifies health listeners before the coordinator base
+        # updates `last_update_success`; use our own already-updated health fields so
+        # recovery renders correctly even when an unchanged payload suppresses the
+        # base listener callback.
+        return self.last_successful_poll is not None and self.last_error is None
 
     @property
     def last_poll_age(self) -> int | None:
@@ -162,11 +166,13 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                 )
                 # Use settings readback (not map) for validated active state post-PUT
                 settings = await self.client.get_settings(self.device_id)
-                if settings is None or settings.active_tracking_enable is None:
+                if settings is None or settings.active_tracking_enable is not True:
                     # No validated state readback -> do not claim success
-                    self.last_locate_outcome = "error:settings_readback_invalid"
+                    self.last_locate_outcome = "error:tracking_not_enabled"
                     self.last_locate_time = now
-                    self.active_tracking = None
+                    self.active_tracking = (
+                        settings.active_tracking_enable if settings is not None else None
+                    )
                     self.async_update_listeners()
                     return False
                 self.active_tracking = settings.active_tracking_enable
