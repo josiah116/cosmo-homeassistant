@@ -41,7 +41,8 @@
     },
     "error": {
       "invalid_auth": "Wrong email or password.",
-      "cannot_connect": "Couldn't reach the COSMO service. Try again."
+      "cannot_connect": "Couldn't reach the COSMO service. Try again.",
+      "device_not_on_account": "These credentials are valid but the configured watch is not on this account."
     },
     "abort": {
       "no_devices": "No watches were found on this account.",

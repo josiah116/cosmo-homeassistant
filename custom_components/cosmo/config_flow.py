@@ -217,19 +217,26 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
             password = user_input[CONF_PASSWORD]
             self._email = email
             self._password = password
-            _, errors = await self._authenticate(email, password)
+            devices, errors = await self._authenticate(email, password)
             if not errors:
-                # Auth succeeded for the account. We do not change device here.
-                # If the specific device_id is no longer on the account, subsequent
-                # coordinator updates will surface appropriate errors.
-                # (Reconfigure flow can be used to pick a different device.)
-                return self.async_update_reload_and_abort(
-                    entry,
-                    data_updates={
-                        CONF_EMAIL: email,
-                        CONF_PASSWORD: password,
-                    },
+                # Harden reauth: valid creds for a different account (no matching
+                # watch) must fail closed here with a user-visible error. Do not
+                # blindly update the entry; let coordinator surface UpdateFailed
+                # only for transient "device vanished" after a legitimate reauth.
+                entry_device_id = str(entry.data.get(CONF_DEVICE_ID, ""))
+                has_watch = any(
+                    str(d.get("id")) == entry_device_id for d in devices
                 )
+                if not has_watch:
+                    errors = {"base": "device_not_on_account"}
+                else:
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        data_updates={
+                            CONF_EMAIL: email,
+                            CONF_PASSWORD: password,
+                        },
+                    )
 
         default_email = self._email or ""
         return self.async_show_form(

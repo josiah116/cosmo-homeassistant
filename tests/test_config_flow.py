@@ -67,3 +67,42 @@ def test_reauth_confirm_cannot_connect():
         assert result["type"] == "form"
         assert result.get("errors") == {"base": "cannot_connect"}
     asyncio.run(_run())
+
+
+def test_reauth_confirm_device_not_on_account():
+    """Valid credentials for another account must not replace entry credentials."""
+
+    async def _run():
+        flow = CosmoConfigFlow()
+        with patch.object(
+            flow,
+            "_authenticate",
+            new=AsyncMock(return_value=([{"id": "different-watch"}], {})),
+        ):
+            result = await flow.async_step_reauth_confirm(
+                {CONF_EMAIL: "other@example.invalid", CONF_PASSWORD: "placeholder"}
+            )
+        assert result["type"] == "form"
+        assert result["step_id"] == "reauth_confirm"
+        assert result["errors"] == {"base": "device_not_on_account"}
+
+    asyncio.run(_run())
+
+
+def test_reauth_confirm_empty_device_list_fails_closed():
+    """Valid login without watches must remain on the reauth form."""
+
+    async def _run():
+        flow = CosmoConfigFlow()
+        with patch.object(
+            flow,
+            "_authenticate",
+            new=AsyncMock(return_value=([], {})),
+        ):
+            result = await flow.async_step_reauth_confirm(
+                {CONF_EMAIL: "account@example.invalid", CONF_PASSWORD: "placeholder"}
+            )
+        assert result["type"] == "form"
+        assert result["errors"] == {"base": "device_not_on_account"}
+
+    asyncio.run(_run())
