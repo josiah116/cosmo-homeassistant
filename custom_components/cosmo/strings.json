@@ -29,6 +29,14 @@
         "data": {
           "device_id": "Watch"
         }
+      },
+      "reauth_confirm": {
+        "title": "Cosmo account",
+        "description": "The COSMO credentials need to be updated (e.g. password changed in the app). Enter the current email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
       }
     },
     "error": {

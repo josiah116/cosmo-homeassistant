@@ -130,6 +130,12 @@ The entity IDs, friendly names, and automations stay put — only the underlying
 watch changes. Any Recorder history deliberately enabled for those entities also
 stays associated with the same entity IDs.
 
+If your COSMO password changes (e.g. you updated it in the official app), Home
+Assistant will detect the auth failure on next poll and surface a **Re-authenticate**
+prompt on the integration card. Click **Re-authenticate** and enter the current
+email and password to restore the entry. This uses the new dedicated reauth flow
+added in v0.5.0 (keeps your device_id and history intact).
+
 ## How auth works
 
 Email + password → `POST /v2/token` → short-lived access token + refresh token.

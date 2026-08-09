@@ -9,6 +9,7 @@ broken watch is replaced with a new one under a new FiLIP device_id.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -188,4 +189,57 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {vol.Required(CONF_DEVICE_ID): vol.In(self._device_options(self._devices))}
             ),
+        )
+
+    # --- reauth: triggered by ConfigEntryAuthFailed (bad/expired creds, pw change
+    # in the COSMO app, etc). Updates the stored email/password for this entry
+    # (device_id stays the same; reconfigure is used to change which watch).
+    # We re-use _authenticate so the same error mapping and login logic applies.
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Handle re-authentication for an existing config entry."""
+        email = entry_data.get(CONF_EMAIL)
+        self._email = email if isinstance(email, str) else None
+        # do not carry over the old password into the form; force re-entry
+        self._password = None
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Prompt the user to re-enter credentials."""
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            email = user_input[CONF_EMAIL].strip().lower()
+            password = user_input[CONF_PASSWORD]
+            self._email = email
+            self._password = password
+            _, errors = await self._authenticate(email, password)
+            if not errors:
+                # Auth succeeded for the account. We do not change device here.
+                # If the specific device_id is no longer on the account, subsequent
+                # coordinator updates will surface appropriate errors.
+                # (Reconfigure flow can be used to pick a different device.)
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={
+                        CONF_EMAIL: email,
+                        CONF_PASSWORD: password,
+                    },
+                )
+
+        default_email = self._email or ""
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_EMAIL, default=default_email): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={"name": entry.title},
         )

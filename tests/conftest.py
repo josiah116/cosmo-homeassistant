@@ -290,6 +290,48 @@ _ha.config_entries.ConfigEntry = _DummyConfigEntry
 if hasattr(sys.modules.get("homeassistant.config_entries"), "__dict__"):
     sys.modules["homeassistant.config_entries"].ConfigEntry = _DummyConfigEntry
 
+# Dummy for ConfigFlow to allow importing config_flow.py in tests
+if "homeassistant.helpers.aiohttp_client" not in sys.modules:
+    sys.modules["homeassistant.helpers.aiohttp_client"] = MagicMock()
+sys.modules["homeassistant.helpers.aiohttp_client"].async_get_clientsession = MagicMock(return_value=MagicMock())
+
+class _DummyConfigFlow:
+    VERSION = 1
+    def __init_subclass__(cls, domain=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if domain:
+            cls.domain = domain
+    def __init__(self, *a, **k):
+        self.hass = MagicMock()
+        self.context = {}
+        self._devices = []
+        self._email = None
+        self._password = None
+        self._reauth_entry = None
+    def _async_current_entries(self):
+        return []
+    def async_show_form(self, **kwargs):
+        return {"type": "form", "step_id": kwargs.get("step_id"), "errors": kwargs.get("errors", {})}
+    def async_abort(self, **kwargs):
+        return {"type": "abort", "reason": kwargs.get("reason")}
+    def async_update_reload_and_abort(self, entry, **kwargs):
+        return {"type": "update_reload_and_abort", "entry": entry, "updates": kwargs}
+    def _get_reauth_entry(self):
+        entry = MagicMock()
+        entry.entry_id = "reauth_test"
+        entry.title = "Test Watch"
+        entry.data = {"email": "old@example.com", "password": "oldpw", "device_id": "12345"}
+        return entry
+    def _get_reconfigure_entry(self):
+        return self._get_reauth_entry()
+    async def _authenticate(self, email, password):
+        # default to success in dummy; tests override via patch
+        return [{"id": "12345"}], {}
+
+_ha.config_entries.ConfigFlow = _DummyConfigFlow
+if hasattr(sys.modules.get("homeassistant.config_entries"), "__dict__"):
+    sys.modules["homeassistant.config_entries"].ConfigFlow = _DummyConfigFlow
+
 # also make generic subscript work on top mock
 _ha.config_entries.__class_getitem__ = lambda cls, item: cls
 
