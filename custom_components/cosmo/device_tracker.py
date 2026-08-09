@@ -36,13 +36,34 @@ class CosmoTracker(CosmoEntity, TrackerEntity):
         return SourceType.GPS
 
     @property
+    def available(self) -> bool:
+        """Fail closed when either critical coordinate is unavailable."""
+        return super().available and self.latitude is not None and self.longitude is not None
+
+    @property
     def latitude(self) -> float | None:
-        return self._device.get("latitude")
+        d = self._device
+        return (
+            getattr(d, "latitude", None)
+            if hasattr(d, "latitude")
+            else (d.get("latitude") if isinstance(d, dict) else None)
+        )
 
     @property
     def longitude(self) -> float | None:
-        return self._device.get("longitude")
+        d = self._device
+        return (
+            getattr(d, "longitude", None)
+            if hasattr(d, "longitude")
+            else (d.get("longitude") if isinstance(d, dict) else None)
+        )
 
     @property
     def location_accuracy(self) -> int:
-        return int(self._device.get("radius") or 0)
+        d = self._device
+        rad = (
+            getattr(d, "radius", None)
+            if hasattr(d, "radius")
+            else (d.get("radius") if isinstance(d, dict) else None)
+        )
+        return int(rad or 0)

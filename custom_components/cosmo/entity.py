@@ -30,10 +30,15 @@ class CosmoEntity(CoordinatorEntity[CosmoCoordinator]):
             name=name,
             manufacturer=MANUFACTURER,
             model=model or "JrTrack",
-            sw_version=d.get("firmwareVersion"),
-            serial_number=d.get("imei"),
+            sw_version=getattr(d, "firmware_version", None) if hasattr(d, "firmware_version") else (d.get("firmwareVersion") if isinstance(d, dict) else None),
         )
 
     @property
-    def _device(self) -> dict:
-        return self.coordinator.data or {}
+    def _device(self):
+        """Return coordinator data (now often CosmoDevice; tolerant of dict for compat)."""
+        data = self.coordinator.data
+        if data is None:
+            return {}
+        # Keep normalized models intact so entities read their snake_case fields.
+        # Raw dictionaries remain supported during migration/testing.
+        return data if isinstance(data, dict) or hasattr(data, "__dataclass_fields__") else {}

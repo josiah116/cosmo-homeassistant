@@ -29,11 +29,20 @@
         "data": {
           "device_id": "Watch"
         }
+      },
+      "reauth_confirm": {
+        "title": "Cosmo account",
+        "description": "The COSMO credentials need to be updated (e.g. password changed in the app). Enter the current email and password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
       }
     },
     "error": {
       "invalid_auth": "Wrong email or password.",
-      "cannot_connect": "Couldn't reach the COSMO service. Try again."
+      "cannot_connect": "Couldn't reach the COSMO service. Try again.",
+      "device_not_on_account": "These credentials are valid but the configured watch is not on this account."
     },
     "abort": {
       "no_devices": "No watches were found on this account.",
@@ -55,6 +64,18 @@
       },
       "firmware": {
         "name": "Firmware"
+      },
+      "last_successful_poll": {
+        "name": "Last successful cloud poll"
+      },
+      "location_fix_age": {
+        "name": "Location fix age"
+      },
+      "gps_accuracy": {
+        "name": "GPS accuracy"
+      },
+      "last_locate": {
+        "name": "Last locate command"
       }
     },
     "binary_sensor": {
@@ -63,11 +84,20 @@
       },
       "powered_off": {
         "name": "Powered off"
+      },
+      "cloud_reachable": {
+        "name": "Cloud reachable"
+      },
+      "active_tracking": {
+        "name": "Active tracking"
       }
     },
     "button": {
       "request_location": {
         "name": "Request location"
+      },
+      "stop_active_tracking": {
+        "name": "Stop active tracking"
       }
     }
   }

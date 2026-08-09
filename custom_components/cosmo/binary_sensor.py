@@ -1,4 +1,8 @@
-"""Binary sensors: emergency (SOS) mode, powered off."""
+"""Binary sensors: emergency (SOS) mode, powered off.
+
+Missing/malformed values return None (unavailable) not False.
+Active tracking unknown returns None (unavailable).
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -29,13 +34,31 @@ BINARY_SENSORS: tuple[CosmoBinaryDescription, ...] = (
         translation_key="emergency",
         device_class=BinarySensorDeviceClass.SAFETY,
         icon="mdi:alarm-light",
-        value_fn=lambda d: bool(d.get("emergencyMode")),
+        value_fn=lambda d: getattr(d, "emergency_mode", None)
+        if hasattr(d, "emergency_mode")
+        else (d.get("emergencyMode") if isinstance(d, dict) else None),
+    ),
+    CosmoBinaryDescription(
+        key="cloud_reachable",
+        translation_key="cloud_reachable",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: None,  # special cased in entity
+    ),
+    CosmoBinaryDescription(
+        key="active_tracking",
+        translation_key="active_tracking",
+        icon="mdi:crosshairs-gps",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: None,  # special cased
     ),
     CosmoBinaryDescription(
         key="powered_off",
         translation_key="powered_off",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda d: bool(d.get("shutdown")),
+        value_fn=lambda d: getattr(d, "shutdown", None)
+        if hasattr(d, "shutdown")
+        else (d.get("shutdown") if isinstance(d, dict) else None),
     ),
 )
 
@@ -62,4 +85,14 @@ class CosmoBinarySensor(CosmoEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        return self.entity_description.value_fn(self._device)
+        key = self.entity_description.key
+        if key == "cloud_reachable":
+            cr = getattr(self.coordinator, "cloud_reachable", None)
+            return bool(cr) if cr is not None else None
+        if key == "active_tracking":
+            # unknown (None) or schema-invalid -> unavailable (None), not False
+            return getattr(self.coordinator, "active_tracking", None)
+        val = self.entity_description.value_fn(self._device)
+        if val is None:
+            return None
+        return bool(val)

@@ -16,6 +16,7 @@ A device per watch, with:
 |---|---|---|
 | Location | `device_tracker` | Last-known GPS on the HA map; accuracy from the fix radius. Sensitive watch/account fields are not exposed as attributes. |
 | Request location | `button` | **On-demand live fix** — enables "active tracking" so the watch reports every ~10 s. HA stops turbo after a new accurate fix; COSMO's timeout remains the fallback. The only action that wakes the watch. |
+| Stop active tracking | `button` | Explicitly ends a user-started Active Tracking session. |
 | Battery | `sensor` | Watch battery %. |
 | Charger battery | `sensor` | Charging cradle/base battery % (diagnostic). |
 | Last location fix | `sensor` | Timestamp of the most recent GPS fix. |
@@ -64,6 +65,33 @@ Version 0.4.2 removes the tracker attributes `gps_date`, `phone_number`
 privacy and deduplication change. Update existing templates to use the dedicated
 **Last location fix** sensor and **SOS / emergency** binary sensor instead.
 
+
+## v0.5.0 Phase 0 foundation (reliability, privacy, diagnostics)
+
+- Normalized response models (dataclasses) at API/entity boundaries; tolerant of missing fields; no silent bad location data.
+- Full pytest suite with sanitized mocks (no real creds, ids, coords in tests).
+- Home Assistant diagnostics (redacted only: version, health, last poll, error class, capabilities; zero PII/coords/IMEI).
+- Removed IMEI/serial from DeviceInfo + safe migration to clear legacy serial metadata (no value logged, no device delete).
+- New diagnostic/operational entities:
+  - Cloud reachability
+  - Last successful cloud poll (timestamp)
+  - Location fix age (seconds)
+  - Dedicated GPS accuracy (meters)
+  - Active Tracking state
+  - Last locate command outcome/timestamp
+- Hardened Active Tracking controls:
+  - Explicit "Stop active tracking" button
+  - Cooldown (60s) after locate requests
+  - Full-workflow duplicate suppression and command locking
+  - Early stop only after a newer fix with accuracy >0m and <=100m
+  - Fail-closed on auth, API/rate-limit errors, schema drift, and cancellation
+  - Immediate `/v2/settings` readback after commands; cached map state cannot immediately overwrite it
+  - No scheduling or auto requests
+- Coordinator health timestamps, task-managed background polls, unload safe.
+- manifest 0.5.0, updated strings/translations/validate/CI.
+
+All existing entity IDs, person linkages, and v0.4.x behavior preserved.
+
 ## Design: scheduled reads never wake the watch
 
 The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
@@ -102,6 +130,14 @@ loses history), use **reconfigure**:
 The entity IDs, friendly names, and automations stay put — only the underlying
 watch changes. Any Recorder history deliberately enabled for those entities also
 stays associated with the same entity IDs.
+
+If your COSMO password changes (e.g. you updated it in the official app), Home
+Assistant will detect the auth failure on next poll and surface a **Re-authenticate**
+prompt on the integration card. Click **Re-authenticate** and enter the current
+email and password to restore the entry. This uses the new dedicated reauth flow
+added in v0.5.0 (keeps your device_id and history intact). Valid credentials for
+an account that does not contain the configured watch are rejected without
+changing the entry.
 
 ## How auth works
 
