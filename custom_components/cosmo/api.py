@@ -21,6 +21,7 @@ from .const import (
     WHITE_LABEL_ID,
     ep_settings,
 )
+from .models import CosmoDevice, CosmoSettings, normalize_device, normalize_settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,16 +102,29 @@ class CosmoClient:
     # --- data -----------------------------------------------------------------
 
     async def get_devices(self) -> list[dict[str, Any]]:
-        """All watches on the account with their last-known location/battery."""
+        """All watches on the account with their last-known location/battery.
+        Returns raw for internal, normalized preferred via get_device.
+        """
         data = await self._request("GET", EP_MAP)
         body = data.get("data", {}) if isinstance(data, dict) else {}
         return body.get("Devices", []) or []
 
-    async def get_device(self, device_id: int | str) -> dict[str, Any] | None:
+    async def get_device(self, device_id: int | str) -> CosmoDevice | None:
+        """Return normalized device model (or None)."""
         for d in await self.get_devices():
             if str(d.get("id")) == str(device_id):
-                return d
+                return normalize_device(d)
         return None
+
+    async def get_settings(self, device_id: int | str) -> CosmoSettings | None:
+        """Optional: read current settings (rate-safe use only, e.g. after command)."""
+        try:
+            data = await self._request("GET", ep_settings(device_id))
+            body = data.get("data", data) if isinstance(data, dict) else {}
+            return normalize_settings(body)
+        except Exception:
+            # fail closed, do not raise for optional read
+            return None
 
     async def set_active_tracking(
         self, device_id: int | str, enable: bool, duration: int, frequency: int

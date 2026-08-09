@@ -18,3 +18,7 @@ jobs:
           python-version: "3.13"
       - name: Compile and validate repository invariants
         run: python3 scripts/validate.py
+      - name: Install test deps (narrow)
+        run: python3 -m pip install pytest pytest-asyncio --user || true
+      - name: Run pytest suite
+        run: python3 -m pytest tests/ -q --tb=no

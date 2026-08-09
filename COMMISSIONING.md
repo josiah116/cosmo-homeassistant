@@ -106,3 +106,7 @@ After pairing:
 - Remove the COSMO config entry to stop API polling.
 - Uninstall the HACS integration and restart HA only if full removal is needed.
 - The separate Locations dashboard can remain or be deleted independently.
+
+
+## v0.5.0 Phase 0 notes
+- New diagnostic sensors and Stop button added. Active tracking now has explicit stop and cooldown. Use Request location only when needed. Diagnostics available under integration for redacted health.

@@ -42,3 +42,14 @@ CONF_PASSWORD = "password"
 CONF_DEVICE_ID = "device_id"
 
 MANUFACTURER = "COSMO Together"
+
+# Cooldown after a locate request to prevent hammering (user-initiated only).
+LOCATE_COOLDOWN = timedelta(seconds=60)
+
+# Entity keys for new operational/diagnostic sensors
+KEY_CLOUD_REACHABLE = "cloud_reachable"
+KEY_LAST_SUCCESSFUL_POLL = "last_successful_poll"
+KEY_LOCATION_FIX_AGE = "location_fix_age"
+KEY_GPS_ACCURACY = "gps_accuracy"
+KEY_ACTIVE_TRACKING = "active_tracking"
+KEY_LAST_LOCATE = "last_locate"

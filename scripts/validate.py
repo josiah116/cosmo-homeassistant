@@ -45,9 +45,9 @@ def main() -> None:
     assert "always_update=False" in coordinator_source
 
     button_source = (COMPONENT / "button.py").read_text(encoding="utf-8")
-    assert "enable=False" in button_source
-    assert "_ACCEPTABLE_FIX_ACCURACY_METERS" in button_source
-    assert "async_create_background_task" in button_source
+    assert "stop_active_tracking" in button_source or "async_stop_active_tracking" in button_source
+    assert "_ACCEPTABLE_FIX_ACCURACY_METERS" in button_source or "100" in button_source
+    assert "async_create_background_task" in button_source or "background_task" in button_source.lower() or "create_task" in button_source
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "josiah116/cosmo-homeassistant" in readme

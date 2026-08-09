@@ -64,6 +64,33 @@ Version 0.4.2 removes the tracker attributes `gps_date`, `phone_number`
 privacy and deduplication change. Update existing templates to use the dedicated
 **Last location fix** sensor and **SOS / emergency** binary sensor instead.
 
+
+## v0.5.0 Phase 0 foundation (reliability, privacy, diagnostics)
+
+- Normalized response models (dataclasses) at API/entity boundaries; tolerant of missing fields; no silent bad location data.
+- Full pytest suite with sanitized mocks (no real creds, ids, coords in tests).
+- Home Assistant diagnostics (redacted only: version, health, last poll, error class, capabilities; zero PII/coords/IMEI).
+- Removed IMEI/serial from DeviceInfo + safe migration to clear legacy serial metadata (no value logged, no device delete).
+- New diagnostic/operational entities:
+  - Cloud reachability
+  - Last successful cloud poll (timestamp)
+  - Location fix age (seconds)
+  - Dedicated GPS accuracy (meters)
+  - Active Tracking state
+  - Last locate command outcome/timestamp
+- Hardened Active Tracking controls:
+  - Explicit "Stop active tracking" button
+  - Cooldown (60s) after locate requests
+  - Duplicate suppression via lock
+  - Early stop on <=100m accuracy
+  - Fail-closed on auth/4xx/cancel
+  - Immediate readback after commands
+  - No scheduling or auto requests
+- Coordinator health timestamps, task-managed background polls, unload safe.
+- manifest 0.5.0, updated strings/translations/validate/CI.
+
+All existing entity IDs, person linkages, and v0.4.x behavior preserved.
+
 ## Design: scheduled reads never wake the watch
 
 The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**

@@ -55,6 +55,21 @@
       },
       "firmware": {
         "name": "Firmware"
+      },
+      "cloud_reachability": {
+        "name": "Cloud reachability"
+      },
+      "last_successful_poll": {
+        "name": "Last successful cloud poll"
+      },
+      "location_fix_age": {
+        "name": "Location fix age"
+      },
+      "gps_accuracy": {
+        "name": "GPS accuracy"
+      },
+      "last_locate": {
+        "name": "Last locate command"
       }
     },
     "binary_sensor": {
@@ -63,11 +78,20 @@
       },
       "powered_off": {
         "name": "Powered off"
+      },
+      "cloud_reachable": {
+        "name": "Cloud reachable"
+      },
+      "active_tracking": {
+        "name": "Active tracking"
       }
     },
     "button": {
       "request_location": {
         "name": "Request location"
+      },
+      "stop_active_tracking": {
+        "name": "Stop active tracking"
       }
     }
   }

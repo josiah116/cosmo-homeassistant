@@ -30,10 +30,16 @@ class CosmoEntity(CoordinatorEntity[CosmoCoordinator]):
             name=name,
             manufacturer=MANUFACTURER,
             model=model or "JrTrack",
-            sw_version=d.get("firmwareVersion"),
-            serial_number=d.get("imei"),
+            sw_version=getattr(d, "firmware_version", None) if hasattr(d, "firmware_version") else (d.get("firmwareVersion") if isinstance(d, dict) else None),
         )
 
     @property
-    def _device(self) -> dict:
-        return self.coordinator.data or {}
+    def _device(self):
+        """Return coordinator data (now often CosmoDevice; tolerant of dict for compat)."""
+        data = self.coordinator.data
+        if data is None:
+            return {}
+        if hasattr(data, "__dict__") and not isinstance(data, dict):
+            # dataclass like
+            return {k: getattr(data, k) for k in data.__dataclass_fields__} if hasattr(data, "__dataclass_fields__") else vars(data)
+        return data if isinstance(data, dict) else {}

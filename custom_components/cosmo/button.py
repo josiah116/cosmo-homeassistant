@@ -1,12 +1,9 @@
-"""Button to request an on-demand fresh GPS fix from the watch.
+"""Buttons: Request location (with cooldown/lock) and Stop Active Tracking.
 
-Enables FiLIP "active tracking" (turbo mode): the watch reports a fix every
-~10s until HA receives a new accurate fix or COSMO's five-minute timeout ends.
-This is the ONLY action that wakes the watch — it is never triggered on a
-schedule. After enabling it we re-poll /v2/map so the tracker reflects the
-fresh fix as it lands.
+All location requests are strictly user-initiated, cooldown protected,
+duplicate suppressed, bounded, with explicit stop. Fail closed on errors.
+Never auto-scheduled.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -19,19 +16,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import CosmoConfigEntry
 from .api import CosmoApiError, CosmoAuthError
-from .const import ACTIVE_TRACKING_DURATION, ACTIVE_TRACKING_FREQUENCY
 from .entity import CosmoEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-# Re-poll the map after enabling turbo so the fresh fix shows up without waiting
-# for the next scheduled coordinator update. Runs in the background (see async_press),
-# so the window is generous — a slow watch can take well over a minute to report.
-# Frequent early (most fixes land in 10-40s), spread out to ~2 minutes total.
-_POLL_DELAYS = (8, 8, 12, 15, 20, 25, 30)  # ~118s
-# Stop turbo after the first new GPS fix that is accurate enough for family
-# safety use. Poor cell/Wi-Fi fixes keep polling and retain COSMO's five-minute
-# server-side timeout so a later GPS fix still has time to arrive.
+# Polling delays for fresh fix after turbo start. User sees progress via polls.
+_POLL_DELAYS = (8, 8, 12, 15, 20, 25, 30)  # ~118s max
 _ACCEPTABLE_FIX_ACCURACY_METERS = 100
 
 
@@ -45,13 +35,16 @@ async def async_setup_entry(
         [
             CosmoLocateButton(
                 rt.coordinator, entry.data["name"], entry.data.get("model"), entry
-            )
+            ),
+            CosmoStopActiveTrackingButton(
+                rt.coordinator, entry.data["name"], entry.data.get("model"), entry
+            ),
         ]
     )
 
 
 class CosmoLocateButton(CosmoEntity, ButtonEntity):
-    """Request a fresh location now (turbo mode)."""
+    """Request a fresh location now (turbo mode). Cooldown protected."""
 
     _attr_translation_key = "request_location"
     _attr_icon = "mdi:crosshairs-gps"
@@ -62,51 +55,87 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
         self._attr_unique_id = f"{coordinator.entry_id}_request_location"
 
     async def async_press(self) -> None:
-        previous_fix = self._device.get("gpsDate")
         try:
-            await self.coordinator.client.set_active_tracking(
-                self.coordinator.device_id,
-                enable=True,
-                duration=ACTIVE_TRACKING_DURATION,
-                frequency=ACTIVE_TRACKING_FREQUENCY,
-            )
+            ok = await self.coordinator.async_request_locate()
+            if not ok:
+                _LOGGER.info("Locate suppressed by cooldown")
+                return
         except (CosmoApiError, CosmoAuthError) as err:
-            _LOGGER.warning("Cosmo locate request failed: %s", err)
+            _LOGGER.warning("Cosmo locate request failed (fail-closed): %s", err)
+            self.coordinator.last_locate_outcome = f"error:{type(err).__name__}"
             return
-        # Re-poll in the background: the fresh fix takes ~40s to land, and we must
-        # NOT block the caller that long (a voice agent's whole turn would hang).
-        # The press returns now; the tracker/sensors update as the fix arrives.
+        except asyncio.CancelledError:
+            self.coordinator.last_locate_outcome = "cancelled"
+            raise
+
+        # background re-poll for early stop on good accuracy (bounded)
         self._entry.async_create_background_task(
             self.hass,
-            self._poll_for_fix(previous_fix),
+            self._poll_for_fix_and_maybe_stop(),
             "cosmo_locate_poll",
         )
 
-    async def _poll_for_fix(self, previous_fix: str | None) -> None:
+    async def _poll_for_fix_and_maybe_stop(self) -> None:
+        """Poll until good fix or timeout; stop turbo early if accurate <=100m.
+        Cleanup on unload/cancel handled by task mgmt.
+        """
+        previous_fix = None  # best effort
+        try:
+            dev0 = self.coordinator.data
+            previous_fix = getattr(dev0, "gps_date", None) if dev0 else None
+        except Exception:
+            pass
+
         for delay in _POLL_DELAYS:
             await asyncio.sleep(delay)
-            await self.coordinator.async_request_refresh()
-            device = self.coordinator.data or {}
-            current_fix = device.get("gpsDate")
             try:
-                accuracy = float(str(device.get("radius")))
-            except (TypeError, ValueError):
-                accuracy = None
-            if (
-                current_fix
-                and current_fix != previous_fix
-                and accuracy is not None
-                and 0 < accuracy <= _ACCEPTABLE_FIX_ACCURACY_METERS
-            ):
+                await self.coordinator.async_request_refresh()
+                dev = self.coordinator.data
+                if not dev:
+                    continue
+                current_fix = getattr(dev, "gps_date", None)
                 try:
-                    await self.coordinator.client.set_active_tracking(
-                        self.coordinator.device_id,
-                        enable=False,
-                        duration=0,
-                        frequency=ACTIVE_TRACKING_FREQUENCY,
-                    )
-                except (CosmoApiError, CosmoAuthError) as err:
-                    # A failed stop is safe: COSMO's requested duration remains
-                    # the hard upper bound and ends turbo automatically.
-                    _LOGGER.warning("Cosmo locate early-stop failed: %s", err)
-                return
+                    acc = float(getattr(dev, "radius", 0) or 0)
+                except (TypeError, ValueError):
+                    acc = None
+                if (
+                    current_fix
+                    and current_fix != previous_fix
+                    and acc is not None
+                    and 0 < acc <= _ACCEPTABLE_FIX_ACCURACY_METERS
+                ):
+                    # early stop
+                    try:
+                        await self.coordinator.async_stop_active_tracking()
+                    except Exception as err:  # fail closed safe
+                        _LOGGER.warning("early-stop failed (safe): %s", err)
+                    return
+            except asyncio.CancelledError:
+                # cleanup on cancel/unload
+                try:
+                    await self.coordinator.async_stop_active_tracking()
+                except Exception:
+                    pass
+                raise
+            except Exception as err:
+                _LOGGER.debug("poll iteration error (non fatal): %s", err)
+
+
+class CosmoStopActiveTrackingButton(CosmoEntity, ButtonEntity):
+    """Explicit button to stop Active Tracking (turbo) immediately."""
+
+    _attr_translation_key = "stop_active_tracking"
+    _attr_icon = "mdi:stop-circle"
+
+    def __init__(self, coordinator, name, model, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, name, model)
+        self._entry = entry
+        self._attr_unique_id = f"{coordinator.entry_id}_stop_active_tracking"
+
+    async def async_press(self) -> None:
+        try:
+            await self.coordinator.async_stop_active_tracking()
+        except (CosmoApiError, CosmoAuthError) as err:
+            _LOGGER.warning("Stop active tracking failed (fail-closed): %s", err)
+        except asyncio.CancelledError:
+            raise
