@@ -18,9 +18,7 @@ A device per watch, with:
 | Request location | `button` | **On-demand live fix** — enables "active tracking" so the watch reports every ~10 s. HA stops turbo after a new accurate fix; COSMO's timeout remains the fallback. The only action that wakes the watch. |
 | Stop active tracking | `button` | Explicitly ends a user-started Active Tracking session. |
 | Battery | `sensor` | Watch battery %. |
-| Charger battery | `sensor` | Charging cradle/base battery % (diagnostic). |
 | Last location fix | `sensor` | Timestamp of the most recent GPS fix. |
-| Firmware | `sensor` | Firmware version (diagnostic, disabled by default). |
 | SOS / emergency | `binary_sensor` | Watch is in emergency mode. |
 | Powered off | `binary_sensor` | Watch has been shut down. |
 
@@ -76,6 +74,23 @@ privacy and deduplication change. Update existing templates to use the dedicated
 - Explicit boolean map state still regains authority; an expired start fails
   closed to unknown rather than inventing an off state.
 
+## v0.5.2 Startup Active Tracking initialization and entity cleanup
+
+- At startup (after the initial `/v2/map` poll), perform a *one-time* `/v2/settings`
+  read **only if** the Active Tracking state is still unknown (map payload often
+  omits the optional field). This gives the `binary_sensor.xxx_active_tracking`
+  a current value immediately on HA start/restart instead of leaving it unknown.
+  Authentication failures enter native Home Assistant reauthentication; transient
+  API or malformed-value failures remain unknown without blocking map updates.
+- Removes only the unsupported charger-battery and stale firmware sensor
+  registrations. No broad registry sweep, device deletion, or supported-entity
+  identity change occurs.
+- Startup `true` remains bounded to COSMO's five-minute session lifetime; a
+  confirmed `false` remains stable when the map payload omits the field.
+- Tests cover startup authority, error classification, bounded state, polling,
+  and exact registry cleanup.
+- Version and docs updated.
+
 ## v0.5.0 Phase 0 foundation (reliability, privacy, diagnostics)
 
 - Normalized response models (dataclasses) at API/entity boundaries; tolerant of missing fields; no silent bad location data.
@@ -100,7 +115,7 @@ privacy and deduplication change. Update existing templates to use the dedicated
 - Coordinator health timestamps, task-managed background polls, unload safe.
 - Updated manifest/version metadata, strings/translations, validation, and CI.
 
-All existing entity IDs, person linkages, and v0.4.x behavior preserved.
+All supported entity IDs, person linkages, and v0.4.x behavior are preserved.
 
 ## Design: scheduled reads never wake the watch
 

@@ -35,11 +35,11 @@ or private coordinates.
 1. Verify the watch creates the expected entities:
    - GPS `device_tracker`
    - Request-location control
-   - Watch and charger battery sensors
+   - Watch battery sensor
    - Last location-fix timestamp
    - SOS/emergency binary sensor
    - Powered-off binary sensor
-   - Firmware diagnostic
+   - Active Tracking, cloud-health, and command diagnostics
 2. Associate the watch tracker with `person.asher` in Home Assistant.
 3. Confirm `person.asher` changes location from the watch tracker.
 4. Replace the dashboard readiness cards with live watch status and controls.
@@ -110,3 +110,11 @@ After pairing:
 
 ## v0.5.0 Phase 0 notes
 - New diagnostic sensors and Stop button added. Active tracking now has explicit stop and cooldown. Use Request location only when needed. Diagnostics available under integration for redacted health.
+
+## v0.5.2 cleanup notes
+
+- Active Tracking is initialized with one authoritative settings read at startup
+  only when the initial map response omits its state. Normal polling remains
+  map-only and does not wake the watch.
+- Unsupported charger-battery and stale firmware entities are removed. They must
+  not be restored to dashboards or automations without validated vendor data.

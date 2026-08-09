@@ -31,6 +31,13 @@ def _coordinator(data: CosmoDevice | object) -> MagicMock:
     return coord
 
 
+def test_unsupported_sensor_descriptions_are_absent():
+    """Do not recreate stale firmware or unsupported charger-battery entities."""
+    keys = {description.key for description in SENSORS}
+    assert "firmware" not in keys
+    assert "charger_battery" not in keys
+
+
 def test_normalized_dataclass_values_reach_sensor_entities():
     coord = _coordinator(
         normalize_device(

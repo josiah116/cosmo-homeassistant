@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import CosmoApiError, CosmoAuthError, CosmoClient
-from .const import DOMAIN
+from .const import ACTIVE_TRACKING_DURATION, DOMAIN
 from .models import CosmoDevice
 
 _SETTINGS_READBACK_MAP_GRACE = timedelta(minutes=3)
@@ -24,8 +24,10 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
 
     Tracks health timestamps for diagnostics and sensors (cloud reachability,
     last successful poll). Uses always_update=False for unchanged payload behavior.
-    Active state initialized conservatively from map data at poll time or explicit
-    settings readback after commands. Never polls /settings on the 2min cycle.
+    Active state initialized conservatively from map data at poll time,
+    explicit settings readback after commands, *and* one-time settings read at
+    startup (when map omits the optional field). Never polls /settings on the
+    2min cycle.
     """
 
     def __init__(
@@ -290,3 +292,35 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         ):
             self.active_tracking = None
             self._active_tracking_expires_at = None
+
+    async def async_initialize_active_tracking(self) -> None:
+        """One-time Active Tracking state initialization at integration startup.
+
+        The /v2/map payload may omit the optional activeTrackingEnable field
+        (see v0.5.1 preserve logic). When the in-memory state is still unknown
+        after the initial map poll, perform a single authoritative /v2/settings
+        read. Never called on the recurring 2-minute poll cycle. Authentication
+        failures start Home Assistant's native reauthentication flow; transient
+        API failures and malformed state remain unknown without blocking setup.
+        """
+        if self.active_tracking is not None:
+            return
+        try:
+            settings = await self.client.get_settings(self.device_id)
+        except CosmoAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except CosmoApiError:
+            return
+
+        if settings is None or not isinstance(settings.active_tracking_enable, bool):
+            return
+
+        now = datetime.now(timezone.utc)
+        self.active_tracking = settings.active_tracking_enable
+        self._active_readback_protected_until = now + _SETTINGS_READBACK_MAP_GRACE
+        self._active_tracking_expires_at = (
+            now + timedelta(seconds=ACTIVE_TRACKING_DURATION)
+            if settings.active_tracking_enable
+            else None
+        )
+        self.async_update_listeners()

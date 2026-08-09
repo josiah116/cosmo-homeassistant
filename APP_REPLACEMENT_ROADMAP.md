@@ -12,9 +12,9 @@ reverse geocoding, message content, call history, or unnecessary identifiers.
 
 ## Current production baseline
 
-The `cosmo` integration supplies current GPS and accuracy, watch and diagnostic
-charger battery, last-fix timestamp, SOS, powered-off state, and an on-demand
-location request that stops early after an accurate fix. The HA layer adds Home,
+The `cosmo` integration supplies current GPS and accuracy, watch battery,
+last-fix timestamp, SOS, powered-off state, and an on-demand location request
+that stops early after an accurate fix. The HA layer adds Home,
 Pinewoods, Bus Stop, and Clubhouse arrival/departure alerts; school calendar and
 schedule gates; a 30-minute stale-fix guard; 20% low/10% critical battery alerts
 with recovery; independent dual-parent delivery; and an indefinite routine-alert
@@ -46,7 +46,7 @@ commands the watch.
 | Calls/text/media | Use normal phone/SMS; do not proxy through HA |
 | App Station, usage limits, billing | Use COSMO web portal, not HA |
 | Pairing, guardian invites, recovery | Retain vendor break-glass path |
-| Firmware | Monitor version; leave installation vendor/watch-owned |
+| Firmware | Vendor-owned; expose no sensor until the API proves a live value |
 
 ## Phase 0 — harden the integration
 
@@ -61,7 +61,7 @@ commands the watch.
    numbers, IMEI, or message/call data.
 3. Remove the IMEI assignment from `CosmoEntity.device_info` and clear existing
    device-registry serial metadata without recording the identifier. Clean stale
-   firmware and old post-migration entity-registry entries.
+   firmware, unsupported charger-battery, and old post-migration registry entries.
 4. Add entities for cloud reachability, last successful poll, fix age, GPS
    accuracy, Active Tracking, and last locate-command outcome.
 5. Add request cooldown, duplicate suppression, explicit Stop Tracking control,

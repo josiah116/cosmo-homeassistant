@@ -53,6 +53,17 @@ def main() -> None:
     assert "always_update=False" in coordinator_source
     assert "get_settings" in coordinator_source
     assert "location_fix_age" in coordinator_source
+    assert "async_initialize_active_tracking" in coordinator_source
+    assert "except Exception" not in coordinator_source
+
+    init_source = (COMPONENT / "__init__.py").read_text(encoding="utf-8")
+    assert "await coordinator.async_initialize_active_tracking()" in init_source
+    assert 'f"{entry.entry_id}_charger_battery"' in init_source
+    assert 'f"{entry.entry_id}_firmware"' in init_source
+
+    sensor_source = (COMPONENT / "sensor.py").read_text(encoding="utf-8")
+    assert 'key="charger_battery"' not in sensor_source
+    assert 'key="firmware"' not in sensor_source
 
     button_source = (COMPONENT / "button.py").read_text(encoding="utf-8")
     assert "stop_active_tracking" in button_source or "async_stop_active_tracking" in button_source

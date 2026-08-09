@@ -1,4 +1,4 @@
-"""Sensors: battery, charger battery, last fix time, firmware, diagnostics.
+"""Sensors: watch battery, last fix time, and operational diagnostics.
 
 Cloud reachability uses the binary_sensor (connectivity) + timestamp diags
 to reduce entity sprawl; no duplicate string sensor.
@@ -47,17 +47,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
         if hasattr(d, "battery_level")
         else (d.get("batteryLevel") if isinstance(d, dict) else None),
     ),
-    CosmoSensorDescription(
-        key="charger_battery",
-        translation_key="charger_battery",
-        device_class=SensorDeviceClass.BATTERY,
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: getattr(d, "external_battery_level", None)
-        if hasattr(d, "external_battery_level")
-        else (d.get("externalBatteryLevel") if isinstance(d, dict) else None),
-    ),
+
     CosmoSensorDescription(
         key="last_fix",
         translation_key="last_fix",
@@ -69,16 +59,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
             else (d.get("gpsDate") if isinstance(d, dict) else None)
         ),
     ),
-    CosmoSensorDescription(
-        key="firmware",
-        translation_key="firmware",
-        icon="mdi:chip",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        value_fn=lambda d: getattr(d, "firmware_version", None)
-        if hasattr(d, "firmware_version")
-        else (d.get("firmwareVersion") if isinstance(d, dict) else None),
-    ),
+
     # NOTE: no cloud_reachability string sensor here (duplicate of binary connectivity);
     # prefer binary_sensor.cloud_reachable + last_successful_poll / location_fix_age diags.
     CosmoSensorDescription(

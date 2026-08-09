@@ -80,9 +80,22 @@ def _cleanup_stale_serial_metadata(hass: HomeAssistant, entry: CosmoConfigEntry)
         device_registry.async_update_device(device.id, serial_number=None)
 
 
+def _cleanup_unsupported_entities(hass: HomeAssistant, entry: CosmoConfigEntry) -> None:
+    """Remove only the two unsupported sensor registrations from prior releases."""
+    registry = er.async_get(hass)
+    unsupported_unique_ids = {
+        f"{entry.entry_id}_charger_battery",
+        f"{entry.entry_id}_firmware",
+    }
+    for entity in list(er.async_entries_for_config_entry(registry, entry.entry_id)):
+        if entity.unique_id in unsupported_unique_ids:
+            registry.async_remove(entity.entity_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: CosmoConfigEntry) -> bool:
     _migrate_unique_ids(hass, entry)
     _cleanup_stale_serial_metadata(hass, entry)
+    _cleanup_unsupported_entities(hass, entry)
     client = CosmoClient(
         async_get_clientsession(hass),
         entry.data[CONF_EMAIL],
@@ -99,6 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CosmoConfigEntry) -> boo
         hass, entry, client, entry.data[CONF_DEVICE_ID], DEFAULT_SCAN_INTERVAL
     )
     await coordinator.async_config_entry_first_refresh()
+    await coordinator.async_initialize_active_tracking()
 
     entry.runtime_data = CosmoRuntime(client, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

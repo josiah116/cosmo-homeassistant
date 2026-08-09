@@ -58,7 +58,7 @@ def test_diagnostics_reports_only_redacted_operational_health(
         assert entry.data["password"] not in flattened
         assert entry.data["device_id"] not in flattened
         assert diagnostics["integration"] == "cosmo"
-        assert diagnostics["version"] == "0.5.1"
+        assert diagnostics["version"] == "0.5.2"
         assert diagnostics["last_error_class"] == "CosmoApiError"
         assert diagnostics["device_id_present"] is True
         assert "active_tracking_on_demand" in diagnostics["supported_capabilities"]

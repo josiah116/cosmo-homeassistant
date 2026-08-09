@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from custom_components.cosmo import (
     _cleanup_stale_serial_metadata,
+    _cleanup_unsupported_entities,
     _migrate_unique_ids,
 )
 
@@ -105,3 +106,58 @@ def test_serial_cleanup_clears_metadata_without_device_or_entity_deletion():
         serial_number=None,
     )
     device_registry.async_remove_device.assert_not_called()
+
+def test_unsupported_entity_cleanup_removes_only_exact_known_entities():
+    """Remove exact firmware/charger registrations and preserve every other entity."""
+    entry = _entry()
+    entity_registry = MagicMock()
+    firmware = SimpleNamespace(
+        entity_id="sensor.mock_watch_firmware",
+        unique_id="entry-test_firmware",
+    )
+    charger = SimpleNamespace(
+        entity_id="sensor.mock_watch_charger_battery",
+        unique_id="entry-test_charger_battery",
+    )
+    legacy_location = SimpleNamespace(
+        entity_id="sensor.mock_watch_location",
+        unique_id="entry-test_location",
+    )
+    battery = SimpleNamespace(
+        entity_id="sensor.mock_watch_battery",
+        unique_id="entry-test_battery",
+    )
+    with patch(
+        "custom_components.cosmo.er.async_get",
+        return_value=entity_registry,
+    ), patch(
+        "custom_components.cosmo.er.async_entries_for_config_entry",
+        return_value=[firmware, charger, legacy_location, battery],
+    ):
+        _cleanup_unsupported_entities(MagicMock(), entry)
+
+    assert entity_registry.async_remove.call_args_list == [
+        call(firmware.entity_id),
+        call(charger.entity_id),
+    ]
+    entity_registry.async_remove_device.assert_not_called()
+    entity_registry.async_update_device.assert_not_called()
+
+
+def test_unsupported_cleanup_is_idempotent_and_skips_non_matching():
+    entry = _entry()
+    entity_registry = MagicMock()
+    other = SimpleNamespace(
+        entity_id="sensor.mock_watch_active_tracking",
+        unique_id="entry-test_active_tracking",
+    )
+    with patch(
+        "custom_components.cosmo.er.async_get",
+        return_value=entity_registry,
+    ), patch(
+        "custom_components.cosmo.er.async_entries_for_config_entry",
+        return_value=[other],
+    ):
+        _cleanup_unsupported_entities(MagicMock(), entry)
+
+    entity_registry.async_remove.assert_not_called()

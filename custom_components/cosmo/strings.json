@@ -56,15 +56,11 @@
       "battery": {
         "name": "Battery"
       },
-      "charger_battery": {
-        "name": "Charger battery"
-      },
+
       "last_fix": {
         "name": "Last location fix"
       },
-      "firmware": {
-        "name": "Firmware"
-      },
+
       "last_successful_poll": {
         "name": "Last successful cloud poll"
       },
