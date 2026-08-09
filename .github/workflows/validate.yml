@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install narrow validation dependencies
-        run: python3 -m pip install pytest ruff
+        run: python3 -m pip install "aiohttp>=3.11,<4" pytest ruff
       - name: Validate repository invariants
         run: python3 scripts/validate.py
       - name: Compile integration
