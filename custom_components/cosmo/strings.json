@@ -65,9 +65,6 @@
       "firmware": {
         "name": "Firmware"
       },
-      "cloud_reachability": {
-        "name": "Cloud reachability"
-      },
       "last_successful_poll": {
         "name": "Last successful cloud poll"
       },

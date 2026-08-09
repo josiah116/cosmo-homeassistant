@@ -16,6 +16,7 @@ A device per watch, with:
 |---|---|---|
 | Location | `device_tracker` | Last-known GPS on the HA map; accuracy from the fix radius. Sensitive watch/account fields are not exposed as attributes. |
 | Request location | `button` | **On-demand live fix** — enables "active tracking" so the watch reports every ~10 s. HA stops turbo after a new accurate fix; COSMO's timeout remains the fallback. The only action that wakes the watch. |
+| Stop active tracking | `button` | Explicitly ends a user-started Active Tracking session. |
 | Battery | `sensor` | Watch battery %. |
 | Charger battery | `sensor` | Charging cradle/base battery % (diagnostic). |
 | Last location fix | `sensor` | Timestamp of the most recent GPS fix. |
@@ -81,10 +82,10 @@ privacy and deduplication change. Update existing templates to use the dedicated
 - Hardened Active Tracking controls:
   - Explicit "Stop active tracking" button
   - Cooldown (60s) after locate requests
-  - Duplicate suppression via lock
-  - Early stop on <=100m accuracy
-  - Fail-closed on auth/4xx/cancel
-  - Immediate readback after commands
+  - Full-workflow duplicate suppression and command locking
+  - Early stop only after a newer fix with accuracy >0m and <=100m
+  - Fail-closed on auth, API/rate-limit errors, schema drift, and cancellation
+  - Immediate `/v2/settings` readback after commands; cached map state cannot immediately overwrite it
   - No scheduling or auto requests
 - Coordinator health timestamps, task-managed background polls, unload safe.
 - manifest 0.5.0, updated strings/translations/validate/CI.
@@ -134,7 +135,9 @@ If your COSMO password changes (e.g. you updated it in the official app), Home
 Assistant will detect the auth failure on next poll and surface a **Re-authenticate**
 prompt on the integration card. Click **Re-authenticate** and enter the current
 email and password to restore the entry. This uses the new dedicated reauth flow
-added in v0.5.0 (keeps your device_id and history intact).
+added in v0.5.0 (keeps your device_id and history intact). Valid credentials for
+an account that does not contain the configured watch are rejected without
+changing the entry.
 
 ## How auth works
 
