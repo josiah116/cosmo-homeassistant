@@ -85,6 +85,29 @@ def test_request_success_requires_true_settings_readback(mock_client):
     asyncio.run(_run())
 
 
+def test_start_settings_readback_survives_immediate_stale_map(mock_client):
+    async def _run():
+        client = mock_client
+        client.get_settings = AsyncMock(
+            return_value=normalize_settings({"activeTrackingEnable": True})
+        )
+        coord = _make_coord(client)
+
+        async def stale_map_refresh():
+            coord.update_active_from_data(
+                normalize_device(
+                    {"id": "watch-test", "activeTrackingEnable": False}
+                )
+            )
+
+        coord.async_request_refresh = AsyncMock(side_effect=stale_map_refresh)
+
+        assert await coord.async_request_locate() is True
+        assert coord.active_tracking is True
+
+    asyncio.run(_run())
+
+
 def test_request_false_readback_fails_closed(mock_client):
     async def _run():
         client = mock_client
@@ -234,6 +257,44 @@ def test_explicit_stop_requires_false_settings_readback(mock_client):
         assert coord.last_locate_outcome == "stopped"
 
     asyncio.run(_run())
+
+
+def test_stop_settings_readback_survives_immediate_stale_map(mock_client):
+    async def _run():
+        client = mock_client
+        client.get_settings = AsyncMock(
+            return_value=normalize_settings({"activeTrackingEnable": False})
+        )
+        coord = _make_coord(client)
+
+        async def stale_map_refresh():
+            coord.update_active_from_data(
+                normalize_device(
+                    {"id": "watch-test", "activeTrackingEnable": True}
+                )
+            )
+
+        coord.async_request_refresh = AsyncMock(side_effect=stale_map_refresh)
+
+        assert await coord.async_stop_active_tracking() is True
+        assert coord.active_tracking is False
+
+    asyncio.run(_run())
+
+
+def test_map_state_resumes_authority_after_readback_grace(mock_client):
+    coord = _make_coord(mock_client)
+    coord.active_tracking = True
+    coord._active_readback_protected_until = datetime.now(timezone.utc) - timedelta(
+        seconds=1
+    )
+
+    coord.update_active_from_data(
+        normalize_device({"id": "watch-test", "activeTrackingEnable": False})
+    )
+
+    assert coord.active_tracking is False
+    assert coord._active_readback_protected_until is None
 
 
 def test_cancel_during_sleep_attempts_cleanup_and_reraises(mock_client):

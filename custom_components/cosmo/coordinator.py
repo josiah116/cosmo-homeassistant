@@ -16,6 +16,8 @@ from .api import CosmoApiError, CosmoAuthError, CosmoClient
 from .const import DOMAIN
 from .models import CosmoDevice
 
+_SETTINGS_READBACK_MAP_GRACE = timedelta(minutes=3)
+
 
 class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
     """Polls /v2/map (server cache) — never wakes the watch.
@@ -59,6 +61,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         self.last_locate_time: datetime | None = None
         self._locate_lock = asyncio.Lock()  # for duplicate suppression
         self._last_locate_attempt: datetime | None = None
+        self._active_readback_protected_until: datetime | None = None
 
     async def _async_update_data(self) -> CosmoDevice | None:
         try:
@@ -176,6 +179,9 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                     self.async_update_listeners()
                     return False
                 self.active_tracking = settings.active_tracking_enable
+                self._active_readback_protected_until = (
+                    datetime.now(timezone.utc) + _SETTINGS_READBACK_MAP_GRACE
+                )
                 self.last_locate_outcome = "success"
                 self.last_locate_time = now
                 self.async_update_listeners()
@@ -214,6 +220,9 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                 self.async_update_listeners()
                 return False
             self.active_tracking = settings.active_tracking_enable
+            self._active_readback_protected_until = (
+                datetime.now(timezone.utc) + _SETTINGS_READBACK_MAP_GRACE
+            )
             self.last_locate_outcome = "stopped"
             self.last_locate_time = datetime.now(timezone.utc)
             self.async_update_listeners()
@@ -236,7 +245,16 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
 
         Uses map data here; command paths use explicit settings readback.
         Conservative None when unknown.
+        A validated command readback temporarily outranks cached map data so the
+        immediate refresh cannot undo authoritative command confirmation.
         """
+        now = datetime.now(timezone.utc)
+        if (
+            self._active_readback_protected_until is not None
+            and now < self._active_readback_protected_until
+        ):
+            return
+        self._active_readback_protected_until = None
         dev = device or self.data
         if dev:
             val = getattr(dev, "active_tracking_enable", None)
