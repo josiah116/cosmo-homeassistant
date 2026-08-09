@@ -6,7 +6,7 @@ or private coordinates.
 
 ## Pre-arrival state
 
-- The privacy-hardened integration release `v0.4.1` is installed through HACS.
+- The privacy-hardened integration release `v0.4.2` is installed through HACS.
 - Home Assistant has loaded the custom integration successfully.
 - No COSMO config entry or watch entities exist yet because the account does not
   yet contain an activated watch.
@@ -45,6 +45,10 @@ or private coordinates.
 4. Replace the dashboard readiness cards with live watch status and controls.
 5. Preserve the map's current-location-only behavior.
 6. Exercise **Request location** once and verify an updated fix reaches HA.
+7. For a current-location-only deployment, exclude both the generated watch
+   `device_tracker` and `person.asher` from Home Assistant Recorder. If either
+   was already recorded, run `recorder.purge_entities` for those two entities.
+   The live map, zones, and automations continue to work without Recorder.
 
 ## School arrival and departure notifications
 
@@ -63,10 +67,13 @@ After pairing:
 4. Add short dwell/debounce handling to suppress GPS boundary chatter.
 5. Limit notifications to school days and appropriate hours. Prefer a real
    school calendar when available; otherwise use a weekday schedule helper.
-6. Suppress duplicate arrival/departure notifications.
-7. Add an actionable stale-location warning during relevant hours when the
+   Gate monitoring to the active school year and suppress district events named
+   `School Closed:` or `No School:`.
+6. Require a recent watch location fix before accepting a zone transition.
+7. Suppress duplicate arrival/departure notifications.
+8. Add an actionable stale-location warning during relevant hours when the
    watch has stopped reporting.
-8. Keep COSMO's native safe-zone alerts enabled during initial burn-in and
+9. Keep COSMO's native safe-zone alerts enabled during initial burn-in and
    compare timing/reliability before relying on HA alone.
 
 ## Expected timing and battery behavior
@@ -74,9 +81,10 @@ After pairing:
 - HA polls COSMO's cached watch state every two minutes.
 - Alert latency is normally a few minutes but can be longer when the watch has
   not uploaded a fresh fix.
-- **Request location** enables high-frequency active tracking for a short period
-  and should remain an on-demand control rather than a scheduled action because
-  it consumes watch battery.
+- **Request location** enables high-frequency active tracking and should remain
+  an on-demand control rather than a scheduled action because it consumes watch
+  battery. Release `v0.4.2` stops turbo early after a new sufficiently accurate
+  fix; COSMO's five-minute duration remains the fallback timeout.
 
 ## End-to-end acceptance checks
 
@@ -88,6 +96,8 @@ After pairing:
 - Powered-off and SOS state changes are represented correctly.
 - A stale-location condition produces only an actionable alert.
 - COSMO native alerts remain available during burn-in.
+- Recorder history returns no retained rows for the watch tracker or linked
+  person after exclusions are active and the one-time purge has completed.
 
 ## Rollback
 

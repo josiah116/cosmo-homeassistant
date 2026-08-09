@@ -32,6 +32,7 @@ class CosmoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"{DOMAIN}_{device_id}",
             update_interval=scan_interval,
             config_entry=entry,
+            always_update=False,
         )
         self.client = client
         self.entry_id = entry.entry_id

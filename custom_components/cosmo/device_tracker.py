@@ -46,12 +46,3 @@ class CosmoTracker(CosmoEntity, TrackerEntity):
     @property
     def location_accuracy(self) -> int:
         return int(self._device.get("radius") or 0)
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        d = self._device
-        return {
-            "gps_date": d.get("gpsDate"),
-            "phone_number": d.get("gsmNumber"),
-            "emergency_mode": d.get("emergencyMode"),
-        }

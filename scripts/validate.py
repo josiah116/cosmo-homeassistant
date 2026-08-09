@@ -37,9 +37,23 @@ def main() -> None:
     for token in forbidden:
         assert token not in runtime, f"privacy guard failed: runtime contains {token!r}"
 
+    tracker_source = (COMPONENT / "device_tracker.py").read_text(encoding="utf-8")
+    assert "phone_number" not in tracker_source
+    assert "gsmNumber" not in tracker_source
+
+    coordinator_source = (COMPONENT / "coordinator.py").read_text(encoding="utf-8")
+    assert "always_update=False" in coordinator_source
+
+    button_source = (COMPONENT / "button.py").read_text(encoding="utf-8")
+    assert "enable=False" in button_source
+    assert "_ACCEPTABLE_FIX_ACCURACY_METERS" in button_source
+    assert "async_create_background_task" in button_source
+
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "josiah116/cosmo-homeassistant" in readme
     assert "UPSTREAM.md" in readme
+    assert "recorder" in readme.lower()
+    assert "exclude" in readme.lower()
 
     print(f"validation: PASS (cosmo {manifest['version']})")
 

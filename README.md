@@ -14,8 +14,8 @@ A device per watch, with:
 
 | Entity | Type | Notes |
 |---|---|---|
-| Location | `device_tracker` | Last-known GPS on the HA map; accuracy from the fix radius. Fix time, phone number, emergency flag as attributes. |
-| Request location | `button` | **On-demand live fix** — enables "active tracking" so the watch reports every ~10 s for a few minutes. The only action that wakes the watch. |
+| Location | `device_tracker` | Last-known GPS on the HA map; accuracy from the fix radius. Sensitive watch/account fields are not exposed as attributes. |
+| Request location | `button` | **On-demand live fix** — enables "active tracking" so the watch reports every ~10 s. HA stops turbo after a new accurate fix; COSMO's timeout remains the fallback. The only action that wakes the watch. |
 | Battery | `sensor` | Watch battery %. |
 | Charger battery | `sensor` | Charging cradle/base battery % (diagnostic). |
 | Last location fix | `sensor` | Timestamp of the most recent GPS fix. |
@@ -23,10 +23,24 @@ A device per watch, with:
 | SOS / emergency | `binary_sensor` | Watch is in emergency mode. |
 | Powered off | `binary_sensor` | Watch has been shut down. |
 
-### Location history
-Home Assistant's recorder logs every location update, giving you a **history
-trail / timeline the COSMO app itself doesn't offer**. Add a Map card with a
-history path to see where the watch has been.
+### Location privacy and Recorder
+
+Home Assistant Recorder stores GPS state by default. For a current-location-only
+deployment, explicitly exclude both the watch tracker and its linked person from
+Recorder. Replace the example IDs with the entities created on your system:
+
+```yaml
+recorder:
+  exclude:
+    entities:
+      - device_tracker.child_watch
+      - person.child
+```
+
+This does not affect the live map, zones, or automations. If those entities were
+already recorded, use Home Assistant's `recorder.purge_entities` action once to
+remove their existing rows. Deliberately omit these exclusions only when all
+authorized users have accepted retaining a child-location trail.
 
 ## Commissioning
 
@@ -48,7 +62,8 @@ labels for dashboards and automations.
 The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
 (last-known location/battery) — which never contacts the watch. The watch is woken only when
 you press **Request location** (or call the service), so you decide when to spend
-its battery on a live fix.
+its battery on a live fix. Once HA sees a new fix with acceptable accuracy, it
+stops turbo early; COSMO's five-minute duration remains the fail-safe timeout.
 
 ## Installation (HACS)
 
@@ -77,8 +92,9 @@ loses history), use **reconfigure**:
 2. Sign in again (refreshes the list of watches on the account).
 3. Pick the new watch.
 
-The entity IDs, friendly names, and location history stay put — only the
-underlying watch changes.
+The entity IDs, friendly names, and automations stay put — only the underlying
+watch changes. Any Recorder history deliberately enabled for those entities also
+stays associated with the same entity IDs.
 
 ## How auth works
 
