@@ -62,6 +62,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         self._locate_lock = asyncio.Lock()  # for duplicate suppression
         self._last_locate_attempt: datetime | None = None
         self._active_readback_protected_until: datetime | None = None
+        self._active_tracking_expires_at: datetime | None = None
 
     async def _async_update_data(self) -> CosmoDevice | None:
         try:
@@ -176,9 +177,13 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                     self.active_tracking = (
                         settings.active_tracking_enable if settings is not None else None
                     )
+                    self._active_tracking_expires_at = None
                     self.async_update_listeners()
                     return False
                 self.active_tracking = settings.active_tracking_enable
+                self._active_tracking_expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=ACTIVE_TRACKING_DURATION
+                )
                 self._active_readback_protected_until = (
                     datetime.now(timezone.utc) + _SETTINGS_READBACK_MAP_GRACE
                 )
@@ -192,12 +197,14 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                 self.last_locate_outcome = f"error:{type(err).__name__}"
                 self.last_locate_time = now
                 self.active_tracking = None
+                self._active_tracking_expires_at = None
                 self.async_update_listeners()
                 raise
             except asyncio.CancelledError:
                 self.last_locate_outcome = "cancelled"
                 self.last_locate_time = now
                 self.active_tracking = None
+                self._active_tracking_expires_at = None
                 self.async_update_listeners()
                 raise
 
@@ -217,9 +224,11 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
                 self.last_locate_outcome = "stop_error:settings_readback_invalid"
                 self.last_locate_time = datetime.now(timezone.utc)
                 self.active_tracking = None
+                self._active_tracking_expires_at = None
                 self.async_update_listeners()
                 return False
             self.active_tracking = settings.active_tracking_enable
+            self._active_tracking_expires_at = None
             self._active_readback_protected_until = (
                 datetime.now(timezone.utc) + _SETTINGS_READBACK_MAP_GRACE
             )
@@ -233,6 +242,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
             self.last_locate_outcome = f"stop_error:{type(err).__name__}"
             self.last_locate_time = datetime.now(timezone.utc)
             self.active_tracking = None
+            self._active_tracking_expires_at = None
             self.async_update_listeners()
             raise
         except asyncio.CancelledError:
@@ -258,6 +268,25 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         dev = device or self.data
         if dev:
             val = getattr(dev, "active_tracking_enable", None)
-            self.active_tracking = val if val is not None else None
-        else:
+            if val is not None:
+                self.active_tracking = val
+                if val:
+                    from .const import ACTIVE_TRACKING_DURATION
+
+                    self._active_tracking_expires_at = now + timedelta(
+                        seconds=ACTIVE_TRACKING_DURATION
+                    )
+                else:
+                    self._active_tracking_expires_at = None
+                return
+
+        # Missing map state must not erase a validated command result. Keep a
+        # confirmed stop indefinitely; keep a confirmed start only for the
+        # bounded vendor duration, then fail closed to unknown.
+        if (
+            self.active_tracking is True
+            and self._active_tracking_expires_at is not None
+            and now >= self._active_tracking_expires_at
+        ):
             self.active_tracking = None
+            self._active_tracking_expires_at = None

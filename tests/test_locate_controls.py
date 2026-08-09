@@ -297,6 +297,48 @@ def test_map_state_resumes_authority_after_readback_grace(mock_client):
     assert coord._active_readback_protected_until is None
 
 
+def test_missing_map_state_preserves_validated_stop_after_grace(mock_client):
+    coord = _make_coord(mock_client)
+    coord.active_tracking = False
+    coord._active_readback_protected_until = datetime.now(timezone.utc) - timedelta(
+        seconds=1
+    )
+
+    coord.update_active_from_data(normalize_device({"id": "watch-test"}))
+
+    assert coord.active_tracking is False
+
+
+def test_missing_map_state_preserves_tracking_until_bounded_expiry(mock_client):
+    coord = _make_coord(mock_client)
+    coord.active_tracking = True
+    coord._active_readback_protected_until = datetime.now(timezone.utc) - timedelta(
+        seconds=1
+    )
+    coord._active_tracking_expires_at = datetime.now(timezone.utc) + timedelta(
+        seconds=30
+    )
+
+    coord.update_active_from_data(normalize_device({"id": "watch-test"}))
+
+    assert coord.active_tracking is True
+
+
+def test_missing_map_state_expires_tracking_to_unknown(mock_client):
+    coord = _make_coord(mock_client)
+    coord.active_tracking = True
+    coord._active_readback_protected_until = datetime.now(timezone.utc) - timedelta(
+        seconds=1
+    )
+    coord._active_tracking_expires_at = datetime.now(timezone.utc) - timedelta(
+        seconds=1
+    )
+
+    coord.update_active_from_data(normalize_device({"id": "watch-test"}))
+
+    assert coord.active_tracking is None
+
+
 def test_cancel_during_sleep_attempts_cleanup_and_reraises(mock_client):
     async def _run():
         coord = _make_coord(mock_client)

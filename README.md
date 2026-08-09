@@ -66,6 +66,16 @@ privacy and deduplication change. Update existing templates to use the dedicated
 **Last location fix** sensor and **SOS / emergency** binary sensor instead.
 
 
+## v0.5.1 Active Tracking state hotfix
+
+- Preserves validated Active Tracking state when the cached map payload omits
+  its optional tracking field.
+- Keeps a confirmed stop stable and keeps a confirmed start visible for the
+  bounded five-minute vendor duration, so the Stop control does not disappear
+  during an active session.
+- Explicit boolean map state still regains authority; an expired start fails
+  closed to unknown rather than inventing an off state.
+
 ## v0.5.0 Phase 0 foundation (reliability, privacy, diagnostics)
 
 - Normalized response models (dataclasses) at API/entity boundaries; tolerant of missing fields; no silent bad location data.
@@ -88,7 +98,7 @@ privacy and deduplication change. Update existing templates to use the dedicated
   - Immediate `/v2/settings` readback after commands; cached map state cannot immediately overwrite it
   - No scheduling or auto requests
 - Coordinator health timestamps, task-managed background polls, unload safe.
-- manifest 0.5.0, updated strings/translations/validate/CI.
+- Updated manifest/version metadata, strings/translations, validation, and CI.
 
 All existing entity IDs, person linkages, and v0.4.x behavior preserved.
 
