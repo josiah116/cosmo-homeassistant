@@ -6,10 +6,19 @@ Covers reauth flow for ConfigEntryAuthFailed recovery.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from custom_components.cosmo.config_flow import CosmoConfigFlow
-from custom_components.cosmo.const import CONF_EMAIL, CONF_PASSWORD
+from custom_components.cosmo.config_flow import (
+    CosmoConfigFlow,
+    CosmoOptionsFlowHandler,
+)
+from custom_components.cosmo.const import (
+    CONF_ADAPTIVE_POLLING,
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_TRUSTED_ZONES,
+)
 
 
 def test_reauth_step_init():
@@ -104,5 +113,69 @@ def test_reauth_confirm_empty_device_list_fails_closed():
             )
         assert result["type"] == "form"
         assert result["errors"] == {"base": "device_not_on_account"}
+
+    asyncio.run(_run())
+
+
+def test_options_handler_uses_framework_config_entry_and_one_reload_mechanism():
+    entry = type("Entry", (), {"options": {}})()
+    handler = CosmoConfigFlow.async_get_options_flow(entry)
+    assert isinstance(handler, CosmoOptionsFlowHandler)
+    assert handler.automatic_reload is True
+    assert "config_entry" not in handler.__dict__
+    assert "_config_entry" not in handler.__dict__
+
+
+def test_options_defaults_are_disabled_and_no_trusted_zones():
+    async def _run():
+        handler = CosmoOptionsFlowHandler()
+        entry = type("Entry", (), {"options": {}})()
+        handler.hass = SimpleNamespace(
+            config_entries=SimpleNamespace(
+                async_get_known_entry=lambda entry_id: entry,
+            )
+        )
+        handler.handler = "synthetic-entry"
+
+        def _marker(kind):
+            return lambda key, default=None: (
+                kind,
+                key,
+                tuple(default) if isinstance(default, list) else default,
+            )
+
+        with (
+            patch(
+                "custom_components.cosmo.config_flow.vol.Required",
+                side_effect=_marker("required"),
+            ),
+            patch(
+                "custom_components.cosmo.config_flow.vol.Optional",
+                side_effect=_marker("optional"),
+            ),
+            patch(
+                "custom_components.cosmo.config_flow.vol.Schema",
+                side_effect=lambda value: value,
+            ),
+        ):
+            result = await handler.async_step_init()
+
+        schema = result["data_schema"]
+        assert ("required", CONF_ADAPTIVE_POLLING, False) in schema
+        assert ("optional", CONF_TRUSTED_ZONES, ()) in schema
+        assert result["type"] == "form"
+
+    asyncio.run(_run())
+
+
+def test_options_submission_persists_only_selected_options():
+    async def _run():
+        handler = CosmoOptionsFlowHandler()
+        submitted = {
+            CONF_ADAPTIVE_POLLING: True,
+            CONF_TRUSTED_ZONES: ["zone.synthetic"],
+        }
+        result = await handler.async_step_init(submitted)
+        assert result == {"type": "create_entry", "title": "", "data": submitted}
 
     asyncio.run(_run())

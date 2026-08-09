@@ -30,6 +30,7 @@ sys.modules["homeassistant.helpers.entity_registry"] = _ha.helpers.entity_regist
 sys.modules["homeassistant.helpers.update_coordinator"] = _ha.helpers.update_coordinator
 sys.modules["homeassistant.helpers.aiohttp_client"] = _ha.helpers.aiohttp_client
 sys.modules["homeassistant.helpers.entity_platform"] = _ha.helpers.entity_platform
+sys.modules["homeassistant.helpers.selector"] = _ha.helpers.selector
 sys.modules["homeassistant.components"] = _ha.components
 sys.modules["homeassistant.components.button"] = _ha.components.button
 sys.modules["homeassistant.components.sensor"] = _ha.components.sensor
@@ -48,11 +49,14 @@ class _ConfigEntryNotReady(Exception):
 
 
 class _UpdateFailed(Exception):
-    pass
+    def __init__(self, *args, retry_after=None, **kwargs):
+        super().__init__(*args)
+        self.retry_after = retry_after
 
 
 _ha.exceptions.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
 _ha.exceptions.ConfigEntryNotReady = _ConfigEntryNotReady
+_ha.core.callback = lambda func: func
 
 
 def _parse_datetime(value: str):
@@ -159,6 +163,7 @@ def mock_client():
     )
     client.get_settings = AsyncMock(return_value=_ns(MOCK_SETTINGS_RESPONSE.get("data", {})))
     client.set_active_tracking = AsyncMock()
+    client.rate_limit_streak = 0
     client._request = AsyncMock()  # for lower level if needed
     return client
 
@@ -190,6 +195,7 @@ def mock_entry():
         "model": "JrTrack 5",
     }
     entry.runtime_data = None
+    entry.options = {}
     entry.async_create_background_task = MagicMock()
     return entry
 
@@ -286,9 +292,60 @@ class _DummyConfigEntry:
         self.runtime_data = None
         self.options = {}
 
+
+class _DummyOptionsFlowWithReload:
+    automatic_reload = True
+
+    def __init__(self):
+        self.hass = None
+        self.handler = None
+
+    @property
+    def config_entry(self):
+        if self.hass is None:
+            raise ValueError("config entry unavailable during initialization")
+        return self.hass.config_entries.async_get_known_entry(self.handler)
+
+    def async_create_entry(self, *, title="", data):
+        return {"type": "create_entry", "title": title, "data": data}
+
+    def async_show_form(self, **kwargs):
+        return {
+            "type": "form",
+            "step_id": kwargs.get("step_id"),
+            "data_schema": kwargs.get("data_schema"),
+            "errors": kwargs.get("errors", {}),
+        }
+
 _ha.config_entries.ConfigEntry = _DummyConfigEntry
+_ha.config_entries.ConfigFlowResult = dict
+_ha.config_entries.OptionsFlowWithReload = _DummyOptionsFlowWithReload
 if hasattr(sys.modules.get("homeassistant.config_entries"), "__dict__"):
     sys.modules["homeassistant.config_entries"].ConfigEntry = _DummyConfigEntry
+    sys.modules["homeassistant.config_entries"].ConfigFlowResult = dict
+    sys.modules["homeassistant.config_entries"].OptionsFlowWithReload = (
+        _DummyOptionsFlowWithReload
+    )
+
+
+class _DummyBooleanSelector:
+    pass
+
+
+class _DummyEntitySelectorConfig:
+    def __init__(self, *, domain, multiple=False):
+        self.domain = domain
+        self.multiple = multiple
+
+
+class _DummyEntitySelector:
+    def __init__(self, config):
+        self.config = config
+
+
+_ha.helpers.selector.BooleanSelector = _DummyBooleanSelector
+_ha.helpers.selector.EntitySelector = _DummyEntitySelector
+_ha.helpers.selector.EntitySelectorConfig = _DummyEntitySelectorConfig
 
 # Dummy for ConfigFlow to allow importing config_flow.py in tests
 if "homeassistant.helpers.aiohttp_client" not in sys.modules:

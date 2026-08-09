@@ -212,10 +212,44 @@ def test_early_stop_requires_new_fix_and_good_accuracy(mock_client):
     asyncio.run(_run())
 
 
+def test_early_stop_requires_a_pre_command_fix_to_prove_newer(mock_client):
+    async def _run():
+        coord = _make_coord(mock_client)
+        # The locate command's own refresh can populate this after async_press
+        # captured no pre-command fix, but before the managed worker starts.
+        coord.data = normalize_device(
+            {
+                "id": "watch-test",
+                "gpsDate": "2026-08-09T12:00:00Z",
+                "radius": 40,
+            }
+        )
+
+        async def _refresh():
+            coord.data = normalize_device(
+                {
+                    "id": "watch-test",
+                    "gpsDate": "2026-08-09T12:01:00Z",
+                    "radius": 40,
+                }
+            )
+
+        coord.async_request_refresh = AsyncMock(side_effect=_refresh)
+        coord.async_stop_active_tracking = AsyncMock(return_value=True)
+        button = _make_button(coord)
+        with patch("custom_components.cosmo.button._POLL_DELAYS", (0,)):
+            await button._poll_for_fix_and_maybe_stop(None)
+        coord.async_stop_active_tracking.assert_not_awaited()
+        assert coord.last_locate_outcome == "timeout"
+
+    asyncio.run(_run())
+
+
 @pytest.mark.parametrize(
     ("fix", "accuracy"),
     [
         ("2026-08-09T12:00:00Z", 40),
+        ("2026-08-09T11:59:00Z", 40),
         ("2026-08-09T12:01:00Z", 0),
         ("2026-08-09T12:01:00Z", 101),
         ("2026-08-09T12:01:00Z", None),

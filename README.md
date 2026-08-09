@@ -182,6 +182,31 @@ scheduled GitHub Action reports when upstream changes are available, and
 `scripts/sync-upstream.sh` performs a reviewed merge plus local validation. See
 [`UPSTREAM.md`](UPSTREAM.md) for the exact update and release procedure.
 
+
+## v0.5.3 Account protection and adaptive polling
+
+Adaptive cloud polling is **off by default** for existing and new entries. When enabled in the integration options:
+
+- Confirmed away/transitional state polls the cached `/v2/map` response every 60 seconds.
+- Home slows to three minutes only after two distinct, newer, fresh source fixes are confidently inside `zone.home`.
+- Explicitly selected trusted zones require the same two-fix stabilization and use the two-minute baseline.
+- Missing, malformed, future-dated, stale, boundary-uncertain, or otherwise untrusted location data fails safe to two minutes.
+- Repeated cached fixes do not count as multiple fixes, and out-of-order fixes do not advance stabilization.
+
+These polls read COSMO's server cache only. They do **not** create GPS fixes, wake the watch, start Active Tracking, change reporting frequency, or retain a location trail. Scheduled polling remains `/v2/map` only.
+
+Account-level request protection applies to login, token refresh, map/settings reads, and commands across all entries using the same normalized account:
+
+- HTTP `429` responses use standards-compliant `Retry-After` parsing plus a shared local `5 → 15 → 30 → 60` minute cooldown and mandatory positive jitter.
+- Server-provided delays are minimums and are never shortened by the local one-hour sequence.
+- Generic transport/API failures use a separate bounded `2 → 4 → 8 → 15` minute coordinator backoff.
+- Setup retries, manual refresh, locate/readback loops, and additional entries cannot bypass a known process-local cooldown.
+- Only a schema-valid map response resets the account rate-limit streak. A throttled token refresh does not immediately fall back to full login.
+
+API volume scales with the number of configured entries because normal successful map responses are not coalesced. Enable adaptive polling only on entries that need it. The private API publishes no request quota or ban threshold, so the safe two-minute cadence remains the default.
+
+Existing entity identities, reauthentication, current-location-only handling, and bounded user-initiated Active Tracking behavior are preserved.
+
 ## License
 
 MIT

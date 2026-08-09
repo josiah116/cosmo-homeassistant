@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from datetime import datetime, timezone
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import CosmoConfigEntry
 from .api import CosmoApiError, CosmoAuthError
@@ -27,6 +29,24 @@ _LOGGER = logging.getLogger(__name__)
 _POLL_DELAYS = (8, 8, 12, 15, 20, 25, 30)  # ~118s max
 _ACCEPTABLE_FIX_ACCURACY_METERS = 100
 _CLEANUP_TIMEOUT = 5.0  # seconds for bounded stop on cancel
+
+
+def _is_strictly_newer_fix(current_fix: str | None, previous_fix: str | None) -> bool:
+    """Return true only for a provable timezone-aware source timestamp advance."""
+    if not current_fix or not previous_fix:
+        return False
+    try:
+        current = dt_util.parse_datetime(current_fix)
+        previous = dt_util.parse_datetime(previous_fix)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        current is not None
+        and previous is not None
+        and current.tzinfo is not None
+        and previous.tzinfo is not None
+        and current > previous
+    )
 
 
 async def async_setup_entry(
@@ -98,14 +118,11 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
     async def _poll_for_fix_and_maybe_stop(self, previous_fix: str | None = None) -> None:
         """Poll until good fix or timeout; stop turbo early if accurate <=100m.
 
-        Only early stop on *newer* fix (different gps_date) with 0 < acc <=100m.
+        Only early stop on a strictly newer valid source timestamp with
+        0 < accuracy <=100m.
         Duplicate suppressed at caller. Cancellation does bounded cleanup then re-raises.
         Catch *only* expected errors; no blind Exception/pass.
         """
-        if previous_fix is None:
-            dev0 = self.coordinator.data
-            previous_fix = getattr(dev0, "gps_date", None) if dev0 else None
-
         try:
             for delay in _POLL_DELAYS:
                 await asyncio.sleep(delay)
@@ -127,11 +144,12 @@ class CosmoLocateButton(CosmoEntity, ButtonEntity):
                 current_fix = getattr(dev, "gps_date", None)
                 try:
                     acc = float(getattr(dev, "radius", 0) or 0)
-                except (TypeError, ValueError):
+                    if not math.isfinite(acc):
+                        acc = None
+                except (TypeError, ValueError, OverflowError):
                     acc = None
                 if (
-                    current_fix
-                    and current_fix != previous_fix
+                    _is_strictly_newer_fix(current_fix, previous_fix)
                     and acc is not None
                     and 0 < acc <= _ACCEPTABLE_FIX_ACCURACY_METERS
                 ):

@@ -56,11 +56,9 @@
       "battery": {
         "name": "Battery"
       },
-
       "last_fix": {
         "name": "Last location fix"
       },
-
       "last_successful_poll": {
         "name": "Last successful cloud poll"
       },
@@ -94,6 +92,18 @@
       },
       "stop_active_tracking": {
         "name": "Stop active tracking"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cosmo options",
+        "description": "Adaptive polling (opt-in). Polling cadence adapts to location vs home/trusted zones. API volume scales with number of configured entries - enable adaptive only on necessary entries. State polling never wakes the watch or creates fixes.",
+        "data": {
+          "adaptive_polling": "Enable adaptive polling",
+          "trusted_zones": "Trusted zones (home is always special; select additional explicit zones)"
+        }
       }
     }
   }

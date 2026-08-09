@@ -13,11 +13,29 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
+)
 
 from .api import CosmoApiError, CosmoAuthError, CosmoClient
-from .const import CONF_DEVICE_ID, CONF_EMAIL, CONF_PASSWORD, DOMAIN
+from .const import (
+    CONF_ADAPTIVE_POLLING,
+    CONF_DEVICE_ID,
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_TRUSTED_ZONES,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +49,14 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
         self._email: str | None = None
         self._password: str | None = None
         self._devices: list[dict[str, Any]] = []
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> CosmoOptionsFlowHandler:
+        """Return the opt-in adaptive-polling options flow."""
+        return CosmoOptionsFlowHandler()
 
     async def _authenticate(
         self, email: str, password: str
@@ -249,4 +275,34 @@ class CosmoConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
             description_placeholders={"name": entry.title},
+        )
+
+
+class CosmoOptionsFlowHandler(OptionsFlowWithReload):
+    """Configure adaptive polling and explicitly trusted zones."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show or save COSMO polling options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        options = self.config_entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_ADAPTIVE_POLLING,
+                        default=bool(options.get(CONF_ADAPTIVE_POLLING, False)),
+                    ): BooleanSelector(),
+                    vol.Optional(
+                        CONF_TRUSTED_ZONES,
+                        default=list(options.get(CONF_TRUSTED_ZONES, []) or []),
+                    ): EntitySelector(
+                        EntitySelectorConfig(domain="zone", multiple=True)
+                    ),
+                }
+            ),
         )

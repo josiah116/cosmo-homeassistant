@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 DOMAIN = "cosmo"
-VERSION = "0.5.2"
+VERSION = "0.5.3"
 
 API_BASE = "https://api.myfilip.com/v2"
 WHITE_LABEL_ID = 18
@@ -42,6 +42,10 @@ CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_DEVICE_ID = "device_id"
 
+# v0.5.3 adaptive polling (opt-in only)
+CONF_ADAPTIVE_POLLING = "adaptive_polling"
+CONF_TRUSTED_ZONES = "trusted_zones"
+
 MANUFACTURER = "COSMO Together"
 
 # Cooldown after a locate request to prevent hammering (user-initiated only).
@@ -54,3 +58,9 @@ KEY_LOCATION_FIX_AGE = "location_fix_age"
 KEY_GPS_ACCURACY = "gps_accuracy"
 KEY_ACTIVE_TRACKING = "active_tracking"
 KEY_LAST_LOCATE = "last_locate"
+
+# v0.5.3 adaptive cadences (baseline 2m for disabled/stale/pending)
+SCAN_INTERVAL_AWAY = timedelta(seconds=60)
+SCAN_INTERVAL_HOME = timedelta(minutes=3)
+SCAN_INTERVAL_TRUSTED = timedelta(minutes=2)
+SCAN_INTERVAL_BASELINE = timedelta(minutes=2)

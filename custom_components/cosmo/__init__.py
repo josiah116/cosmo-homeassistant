@@ -15,9 +15,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import CosmoApiError, CosmoAuthError, CosmoClient
 from .const import (
+    CONF_ADAPTIVE_POLLING,
     CONF_DEVICE_ID,
     CONF_EMAIL,
     CONF_PASSWORD,
+    CONF_TRUSTED_ZONES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -108,13 +110,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: CosmoConfigEntry) -> boo
     except CosmoApiError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
+    opts = entry.options or {}
+    adaptive = bool(opts.get(CONF_ADAPTIVE_POLLING, False))
+    trusted = opts.get(CONF_TRUSTED_ZONES, []) or []
     coordinator = CosmoCoordinator(
-        hass, entry, client, entry.data[CONF_DEVICE_ID], DEFAULT_SCAN_INTERVAL
+        hass,
+        entry,
+        client,
+        entry.data[CONF_DEVICE_ID],
+        DEFAULT_SCAN_INTERVAL,
+        adaptive_enabled=adaptive,
+        trusted_zone_entity_ids=trusted,
     )
     await coordinator.async_config_entry_first_refresh()
     await coordinator.async_initialize_active_tracking()
 
     entry.runtime_data = CosmoRuntime(client, coordinator)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

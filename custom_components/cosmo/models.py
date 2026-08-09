@@ -42,7 +42,7 @@ class CosmoSettings:
 
 
 def _safe_float(v: Any) -> float | None:
-    if v is None:
+    if v is None or isinstance(v, bool):
         return None
     try:
         f = float(v)
@@ -50,16 +50,17 @@ def _safe_float(v: Any) -> float | None:
         if not (f == f and abs(f) < 1e10):  # simple isfinite  # noqa: PLR0124
             return None
         return f
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
 def _safe_int(v: Any) -> int | None:
-    if v is None:
+    if v is None or isinstance(v, bool):
         return None
     try:
-        return int(v)
-    except (TypeError, ValueError):
+        value = int(v)
+        return value if abs(value) < 1e10 else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
