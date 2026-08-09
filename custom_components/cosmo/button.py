@@ -1,9 +1,10 @@
 """Button to request an on-demand fresh GPS fix from the watch.
 
 Enables FiLIP "active tracking" (turbo mode): the watch reports a fix every
-~10s for a few minutes. This is the ONLY action that wakes the watch — it is
-never triggered on a schedule. After enabling it we re-poll /v2/map a few
-times so the tracker reflects the fresh fix as it lands.
+~10s until HA receives a new accurate fix or COSMO's five-minute timeout ends.
+This is the ONLY action that wakes the watch — it is never triggered on a
+schedule. After enabling it we re-poll /v2/map so the tracker reflects the
+fresh fix as it lands.
 """
 
 from __future__ import annotations

@@ -33,14 +33,12 @@ DEFAULT_SCAN_INTERVAL = timedelta(minutes=2)
 TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 
 # Active-tracking ("turbo"): wake the watch and have it report frequently.
-# Only triggered on-demand (button/service) — never on a schedule.
+# Only triggered on-demand by the Request location button — never on a schedule.
 ACTIVE_TRACKING_DURATION = 300   # seconds the watch stays in turbo
 ACTIVE_TRACKING_FREQUENCY = 10   # seconds between fixes while in turbo
 
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_DEVICE_ID = "device_id"
-
-SERVICE_REQUEST_LOCATION = "request_location"
 
 MANUFACTURER = "COSMO Together"

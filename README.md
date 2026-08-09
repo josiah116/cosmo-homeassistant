@@ -57,11 +57,18 @@ and the clients you authorize; the integration does not forward each fix to a
 third-party geocoder. Home Assistant zones provide local, user-controlled place
 labels for dashboards and automations.
 
+### v0.4.2 attribute compatibility
+
+Version 0.4.2 removes the tracker attributes `gps_date`, `phone_number`
+(the backend's `gsmNumber`), and `emergency_mode`. This is an intentional
+privacy and deduplication change. Update existing templates to use the dedicated
+**Last location fix** sensor and **SOS / emergency** binary sensor instead.
+
 ## Design: scheduled reads never wake the watch
 
 The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
 (last-known location/battery) — which never contacts the watch. The watch is woken only when
-you press **Request location** (or call the service), so you decide when to spend
+you press **Request location**, so you decide when to spend
 its battery on a live fix. Once HA sees a new fix with acceptable accuracy, it
 stops turbo early; COSMO's five-minute duration remains the fail-safe timeout.
 
