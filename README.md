@@ -119,7 +119,7 @@ All supported entity IDs, person linkages, and v0.4.x behavior are preserved.
 
 ## Design: scheduled reads never wake the watch
 
-The two-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
+The ten-minute scheduled poll only reads `/v2/map` — COSMO's **server cache**
 (last-known location/battery) — which never contacts the watch. The watch is woken only when
 you press **Request location**, so you decide when to spend
 its battery on a live fix. Once HA sees a new fix with acceptable accuracy, it
@@ -203,9 +203,20 @@ Account-level request protection applies to login, token refresh, map/settings r
 - Setup retries, manual refresh, locate/readback loops, and additional entries cannot bypass a known process-local cooldown.
 - Only a schema-valid map response resets the account rate-limit streak. A throttled token refresh does not immediately fall back to full login.
 
-API volume scales with the number of configured entries because normal successful map responses are not coalesced. Enable adaptive polling only on entries that need it. The private API publishes no request quota or ban threshold, so the safe two-minute cadence remains the default.
+API volume scales with the number of configured entries because normal successful map responses are not coalesced. Enable adaptive polling only on entries that need its faster behavior. The private API publishes no request quota or ban threshold. Version 0.5.4 changes the default non-adaptive cadence to ten minutes for low-impact backup use.
 
 Existing entity identities, reauthentication, current-location-only handling, and bounded user-initiated Active Tracking behavior are preserved.
+
+## v0.5.4 Low-impact backup mode
+
+- Changes the default passive `/v2/map` cadence from two minutes to ten minutes,
+  reducing scheduled private-API traffic from 720 to 144 reads per watch per day.
+- Keeps all scheduled reads cache-only; they do not wake the watch or create GPS fixes.
+- Disables the high-churn Last successful cloud poll, Location fix age, GPS
+  accuracy, and Last locate diagnostic entities by default on new installs.
+  Existing entity identities remain available for users who deliberately enable them.
+- Leaves user-initiated Request location, bounded Active Tracking, SOS,
+  powered-off, battery, last-fix, cloud-reachability, and person tracking intact.
 
 ## License
 

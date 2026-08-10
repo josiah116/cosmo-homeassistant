@@ -20,6 +20,7 @@ from custom_components.cosmo.api import (
     CosmoRateLimitError,
     _reset_governors_for_testing,
 )
+from custom_components.cosmo.const import DEFAULT_SCAN_INTERVAL
 from custom_components.cosmo.coordinator import CosmoCoordinator
 from custom_components.cosmo.models import (
     CosmoDevice,
@@ -52,6 +53,11 @@ def _make_coordinator(
         trusted_zone_entity_ids=trusted,
     )
     return coord
+
+
+def test_default_scan_interval_is_low_impact_backup_cadence():
+    """Passive backup polling should query the cached map only every ten minutes."""
+    assert DEFAULT_SCAN_INTERVAL == timedelta(minutes=10)
 
 
 class _TimeoutRequestContext:
@@ -293,7 +299,7 @@ def test_transient_backoff_sequence_gate_and_success_reset():
             await coord._async_update_data()
             assert coord.generic_backoff_streak == 0
             assert coord.backoff_class is None
-            assert coord.update_interval.total_seconds() == 120
+            assert coord.update_interval.total_seconds() == 600
 
     asyncio.run(_run())
 
@@ -454,7 +460,7 @@ def test_adaptive_disabled_and_away_cadences_use_real_update_path():
         disabled_client.get_device = AsyncMock(return_value=device)
         disabled = _make_coordinator(disabled_client)
         await disabled._async_update_data()
-        assert disabled.update_interval.total_seconds() == 120
+        assert disabled.update_interval.total_seconds() == 600
         assert disabled.cadence_name == "disabled"
 
         away_client = MagicMock()

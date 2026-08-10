@@ -67,6 +67,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
         translation_key="last_successful_poll",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: None,  # special: use coordinator timestamp
     ),
     CosmoSensorDescription(
@@ -75,6 +76,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTime.SECONDS,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: None,  # special: coord computes from GPS ts
     ),
     CosmoSensorDescription(
@@ -83,6 +85,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.METERS,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: getattr(d, "radius", None)
         if hasattr(d, "radius")
         else (d.get("radius") if isinstance(d, dict) else None),
@@ -92,6 +95,7 @@ SENSORS: tuple[CosmoSensorDescription, ...] = (
         translation_key="last_locate",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda d: None,  # special cased for outcome+time
     ),
 )

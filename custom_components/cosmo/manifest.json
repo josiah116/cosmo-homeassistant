@@ -11,5 +11,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/josiah116/cosmo-homeassistant/issues",
   "requirements": [],
-  "version": "0.5.3"
+  "version": "0.5.4"
 }

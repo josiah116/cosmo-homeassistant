@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 DOMAIN = "cosmo"
-VERSION = "0.5.3"
+VERSION = "0.5.4"
 
 API_BASE = "https://api.myfilip.com/v2"
 WHITE_LABEL_ID = 18
@@ -26,10 +26,11 @@ def ep_settings(device_id: int | str) -> str:
     return f"{API_BASE}/settings/{device_id}"
 
 
-# Poll the server cache (last-known). This does NOT wake the watch. Two minutes
-# keeps family dashboards and safety automations reasonably fresh while avoiding
-# aggressive private-API traffic.
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=2)
+# Poll the server cache (last-known). This does NOT wake the watch. Ten minutes
+# is the low-impact backup cadence: native HA presence remains useful while the
+# official COSMO app handles primary monitoring and the private API sees 80%
+# fewer scheduled reads than the former two-minute cadence.
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=10)
 # Refresh the access token this long before it expires.
 TOKEN_REFRESH_MARGIN = timedelta(minutes=2)
 

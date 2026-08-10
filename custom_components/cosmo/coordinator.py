@@ -592,7 +592,7 @@ class CosmoCoordinator(DataUpdateCoordinator[CosmoDevice | None]):
         The /v2/map payload may omit the optional activeTrackingEnable field
         (see v0.5.1 preserve logic). When the in-memory state is still unknown
         after the initial map poll, perform a single authoritative /v2/settings
-        read. Never called on the recurring 2-minute poll cycle. Authentication
+        read. Never called on the recurring passive poll cycle. Authentication
         failures start Home Assistant's native reauthentication flow; transient
         API failures and malformed state remain unknown without blocking setup.
         """

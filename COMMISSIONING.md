@@ -52,7 +52,7 @@ or private coordinates.
 
 ## School arrival and departure notifications
 
-The current integration reads COSMO's `/v2/map` server cache every two minutes.
+The current integration reads COSMO's `/v2/map` server cache every ten minutes.
 It does **not** import COSMO Mission Control push notifications. Home Assistant
 must derive school arrival/departure from the watch location.
 
@@ -78,8 +78,8 @@ After pairing:
 
 ## Expected timing and battery behavior
 
-- HA polls COSMO's cached watch state every two minutes.
-- Alert latency is normally a few minutes but can be longer when the watch has
+- HA polls COSMO's cached watch state every ten minutes.
+- Backup alert latency is normally up to ten minutes but can be longer when the watch has
   not uploaded a fresh fix.
 - **Request location** enables high-frequency active tracking and should remain
   an on-demand control rather than a scheduled action because it consumes watch

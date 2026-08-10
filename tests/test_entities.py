@@ -38,6 +38,20 @@ def test_unsupported_sensor_descriptions_are_absent():
     assert "charger_battery" not in keys
 
 
+def test_high_churn_diagnostic_sensors_are_disabled_by_default():
+    """Optional diagnostics must not create continuous Recorder churn by default."""
+    descriptions = {
+        description.key: description for description in SENSORS
+    }
+    for key in (
+        "last_successful_poll",
+        "location_fix_age",
+        "gps_accuracy",
+        "last_locate",
+    ):
+        assert descriptions[key].entity_registry_enabled_default is False
+
+
 def test_normalized_dataclass_values_reach_sensor_entities():
     coord = _coordinator(
         normalize_device(
