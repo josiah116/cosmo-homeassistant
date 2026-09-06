@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 DOMAIN = "cosmo"
-VERSION = "0.5.4"
+VERSION = "0.5.5"
 
 API_BASE = "https://api.myfilip.com/v2"
 WHITE_LABEL_ID = 18

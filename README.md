@@ -218,6 +218,16 @@ Existing entity identities, reauthentication, current-location-only handling, an
 - Leaves user-initiated Request location, bounded Active Tracking, SOS,
   powered-off, battery, last-fix, cloud-reachability, and person tracking intact.
 
+## v0.5.5 Home Assistant device-registry compatibility
+
+- Requires Home Assistant 2026.9.0 or newer.
+- Replaces the deprecated generic device-registry lookup with the
+  identifier-specific API introduced for unambiguous config-entry ownership.
+- Preserves the existing non-destructive device-identifier migration and stale
+  serial-metadata cleanup behavior.
+- Removes the compatibility warning and prevents breakage when Home Assistant
+  removes the deprecated lookup in 2027.8.
+
 ## License
 
 MIT
