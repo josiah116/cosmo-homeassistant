@@ -59,9 +59,10 @@ def _migrate_unique_ids(hass: HomeAssistant, entry: CosmoConfigEntry) -> None:
                 new_unique_id=new_prefix + entity.unique_id[len(old_prefix) :],
             )
 
-    old_device_ids = {(DOMAIN, str(entry.data[CONF_DEVICE_ID]))}
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(identifiers=old_device_ids)
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, str(entry.data[CONF_DEVICE_ID])), entry.entry_id
+    )
     if device is not None and device.config_entry_id == entry.entry_id:
         device_registry.async_update_device(
             device.id, new_identifiers={(DOMAIN, entry.entry_id)}
@@ -76,7 +77,9 @@ def _cleanup_stale_serial_metadata(hass: HomeAssistant, entry: CosmoConfigEntry)
     Preserves all stable old unique IDs / entity IDs via prior migration.
     """
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     if device is not None:
         # set unconditionally; no getattr/read of the value
         device_registry.async_update_device(device.id, serial_number=None)

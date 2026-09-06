@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call, create_autospec, patch
 
 from custom_components.cosmo import (
     _cleanup_stale_serial_metadata,
     _cleanup_unsupported_entities,
     _migrate_unique_ids,
 )
+
+
+class _DeviceRegistrySpec:
+    """Narrow DeviceRegistry contract exercised by migration helpers."""
+
+    def async_get_device_by_identifier(
+        self, identifier: tuple[str, str], config_entry_id: str
+    ): ...
+
+    def async_update_device(self, device_id: str, **changes): ...
+
+    def async_remove_device(self, device_id: str): ...
+
+
+
+def _device_registry():
+    return create_autospec(_DeviceRegistrySpec, instance=True, spec_set=True)
 
 
 def _entry():
@@ -30,8 +47,8 @@ def test_migration_preserves_entity_ids_and_only_rekeys_matching_unique_ids():
         entity_id="sensor.mock_watch_battery",
         unique_id="entry-test_battery",
     )
-    device_registry = MagicMock()
-    device_registry.async_get_device.return_value = SimpleNamespace(
+    device_registry = _device_registry()
+    device_registry.async_get_device_by_identifier.return_value = SimpleNamespace(
         id="ha-device-test",
         config_entry_id=entry.entry_id,
     )
@@ -56,6 +73,9 @@ def test_migration_preserves_entity_ids_and_only_rekeys_matching_unique_ids():
         legacy.entity_id,
         new_unique_id="entry-test_tracker",
     )
+    device_registry.async_get_device_by_identifier.assert_called_once_with(
+        ("cosmo", "legacy-device"), "entry-test"
+    )
     device_registry.async_update_device.assert_called_once_with(
         "ha-device-test",
         new_identifiers={("cosmo", "entry-test")},
@@ -65,8 +85,8 @@ def test_migration_preserves_entity_ids_and_only_rekeys_matching_unique_ids():
 
 def test_migration_does_not_claim_device_owned_by_another_entry():
     entry = _entry()
-    device_registry = MagicMock()
-    device_registry.async_get_device.return_value = SimpleNamespace(
+    device_registry = _device_registry()
+    device_registry.async_get_device_by_identifier.return_value = SimpleNamespace(
         id="ha-device-test",
         config_entry_id="different-entry",
     )
@@ -84,13 +104,16 @@ def test_migration_does_not_claim_device_owned_by_another_entry():
     ):
         _migrate_unique_ids(MagicMock(), entry)
 
+    device_registry.async_get_device_by_identifier.assert_called_once_with(
+        ("cosmo", "legacy-device"), "entry-test"
+    )
     device_registry.async_update_device.assert_not_called()
 
 
 def test_serial_cleanup_clears_metadata_without_device_or_entity_deletion():
     entry = _entry()
-    device_registry = MagicMock()
-    device_registry.async_get_device.return_value = SimpleNamespace(id="ha-device-test")
+    device_registry = _device_registry()
+    device_registry.async_get_device_by_identifier.return_value = SimpleNamespace(id="ha-device-test")
 
     with patch(
         "custom_components.cosmo.dr.async_get",
@@ -98,8 +121,8 @@ def test_serial_cleanup_clears_metadata_without_device_or_entity_deletion():
     ):
         _cleanup_stale_serial_metadata(MagicMock(), entry)
 
-    device_registry.async_get_device.assert_called_once_with(
-        identifiers={("cosmo", "entry-test")}
+    device_registry.async_get_device_by_identifier.assert_called_once_with(
+        ("cosmo", "entry-test"), "entry-test"
     )
     device_registry.async_update_device.assert_called_once_with(
         "ha-device-test",
