@@ -1,8 +1,9 @@
 name: Watch upstream
 
+# Scheduled checks run from the operator's local vendor-patch watch instead:
+# GitHub disables scheduled workflows after 60 days without repo activity,
+# and this fork has Issues disabled. Run manually when needed.
 on:
-  schedule:
-    - cron: "17 13 * * 1"
   workflow_dispatch:
 
 permissions:
